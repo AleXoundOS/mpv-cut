@@ -1,0 +1,6 @@
+*.hi
+*.o
+*.so
+*_stub.h
+hslua
+test_file

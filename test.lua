@@ -1,0 +1,13 @@
+mylib = package.loadlib("/home/alex/.mpv/scripts/lualibhelper.so", "luaopen_lualibhelper")
+mylib()
+hs_init()
+print(add_in_haskell(1, 2))
+print(add_in_haskell(-10, 20))
+hs_exit()
+
+--mp.add_forced_key_binding("t", function()
+    --hs_init()
+    --print(add_in_haskell(1, 2))
+    --print(add_in_haskell(-10, 20))
+    --hs_exit()
+--end)
