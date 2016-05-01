@@ -1,6 +1,5 @@
 mylibinit = package.loadlib("./libmpv-cut.so", "luaopen_lualibhelper")
 mylibinit()
-print(list_dir("/")[2])
 
 hs_init()
 

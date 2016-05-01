@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+--{-# LANGUAGE ScopedTypeVariables #-}
 
 module MPV_Cut where
 
@@ -9,10 +9,9 @@ import System.Posix.IO (fdToHandle)
 
 foreign import ccall "stdio.h fileno" fileno :: Ptr CFile -> IO CInt
 
-foreign export ccall
-    add_c :: Ptr CFile -> IO CInt
-add_c :: Ptr CFile -> IO CInt
-add_c h = do
+foreign export ccall h_add :: Ptr CFile -> IO CInt
+h_add :: Ptr CFile -> IO CInt
+h_add h = do
     fd <- fileno h
     handle <- fdToHandle $ fromIntegral fd
     hSetBuffering handle LineBuffering

@@ -1,12 +1,9 @@
 #include <stdio.h>
-#include <dirent.h>
-#include <errno.h>
-#include <string.h>
 #include <stdint.h>
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
-#include "test_stub.h"
+#include "mpv-cut_stub.h"
 
 /** taken from liolib.c *******************************************************/
 typedef luaL_Stream LStream;
@@ -22,13 +19,13 @@ static FILE *tofile (lua_State *L) {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-int hsAdd(lua_State *L)
+int l_add(lua_State *L)
 {
     FILE *fp = tofile(L); ///< file must be 1st argument
 
     fprintf(fp, "oh yeah\n");
 
-    printf("hsAdd returned %d\n", add_c(fp));
+    printf("hsAdd returned %d\n", h_add(fp));
     fflush(fp);
 
     uint8_t side;
@@ -42,34 +39,6 @@ int hsAdd(lua_State *L)
     lua_pushnumber(L, side);
 
     return 1;
-}
-
-int l_dir(lua_State *L)
-{
-    DIR *dir;
-    struct dirent *entry;
-    int i;
-    const char *path = luaL_checkstring(L, 1);
-
-    /* open directory */
-    dir = opendir(path);
-    if (dir == NULL) {  /* error opening the directory? */
-        lua_pushnil(L);  /* return nil and ... */
-        lua_pushstring(L, strerror(errno));  /* error message */
-        return 2;  /* number of results */
-    }
-
-    /* create result table */
-    lua_newtable(L);
-    i = 1;
-    while ((entry = readdir(dir)) != NULL) {
-        lua_pushnumber(L, i++);  /* push key */
-        lua_pushstring(L, entry->d_name);  /* push value */
-        lua_settable(L, -3);
-    }
-
-    closedir(dir);
-    return 1;  /* table is already on top */
 }
 
 int hs_init_lua(lua_State *L)
@@ -91,10 +60,7 @@ int luaopen_lualibhelper(lua_State *L)
     lua_pushcfunction(L, hs_exit_lua);
     lua_setglobal(L, "hs_exit");
 
-    lua_pushcfunction(L, (int (*)(lua_State*)) l_dir);
-    lua_setglobal(L, "list_dir");
-
-    lua_pushcfunction(L, (int (*)(lua_State*)) hsAdd);
+    lua_pushcfunction(L, (int (*)(lua_State*)) l_add);
     lua_setglobal(L, "hsAdd");
 
     return 0;

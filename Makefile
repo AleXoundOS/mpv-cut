@@ -1,14 +1,13 @@
 all: libmpv-cut.so
 
-test_stub.h: test.hs
-	ghc $^ -o libmpv-cut.o -c -Wall -no-hs-main
+mpv-cut_stub.h: mpv-cut.hs
+	ghc $^ -o $@.o -c -Wall -no-hs-main
 
-libmpv-cut.so: test.hs lualibhelper.o
+libmpv-cut.so: mpv-cut.hs lualibhelper.o
 	ghc $^ -o $@ -Wall -no-hs-main -shared -fPIC -dynamic -lHSrts-ghc7.10.3
 
-lualibhelper.o: test_stub.h mylib.c
-	gcc mylib.c -o $@ -c -Wall -I/usr/include/lua5.2 -I/usr/lib/ghc-7.10.3/include
-	@#gcc -Wall -shared -fPIC -I/usr/include/lua5.2 -I/usr/lib/ghc-7.10.3/include libmpv-cut.so -Wl,-rpath="." -o mylib.so mylib.c
+lualibhelper.o: lualibhelper.c mpv-cut_stub.h
+	gcc $< -o $@ -c -Wall -I/usr/include/lua5.2 -I/usr/lib/ghc-7.10.3/include
 
 clean:
 	rm -f -v *.hi
