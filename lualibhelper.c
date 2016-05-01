@@ -26,7 +26,6 @@ int l_add(lua_State *L)
     fprintf(fp, "oh yeah\n");
 
     printf("hsAdd returned %d\n", h_add(fp));
-    fflush(fp);
 
     uint8_t side;
     int number = luaL_checkint(L, 2);

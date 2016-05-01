@@ -1,13 +1,13 @@
-mylib = package.loadlib("/home/alex/.mpv/scripts/lualibhelper.so", "luaopen_lualibhelper")
-mylib()
-hs_init()
-print(add_in_haskell(1, 2))
-print(add_in_haskell(-10, 20))
-hs_exit()
+mylibinit = package.loadlib("./libmpv-cut.so", "luaopen_lualibhelper")
+mylibinit()
 
---mp.add_forced_key_binding("t", function()
-    --hs_init()
-    --print(add_in_haskell(1, 2))
-    --print(add_in_haskell(-10, 20))
-    --hs_exit()
---end)
+hs_init()
+
+--f = io.open("test_file", "r+") -- should be so
+f = io.open("test_file", "w+")
+f:write("123\n")
+f:flush()
+print(hsAdd(f, 1))
+f:close()
+
+hs_exit()
