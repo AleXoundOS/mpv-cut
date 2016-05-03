@@ -4,7 +4,7 @@ all: libmpv-cut.so
 OPTIM=
 
 mpv-cut_stub.h: mpv-cut.hs
-	ghc $^ -c -Wall -no-hs-main ${OPTIM}
+	ghc $^ -c -Wall -no-hs-main ${OPTIM} -shared -fPIC -dynamic
 
 libmpv-cut.so: mpv-cut.hs lualibhelper.o
 	ghc $^ -o $@ -Wall -no-hs-main ${OPTIM} -shared -fPIC -dynamic -lHSrts-ghc7.10.3
