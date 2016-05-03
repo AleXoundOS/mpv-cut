@@ -40,25 +40,23 @@ int l_add(lua_State *L)
     return 1;
 }
 
-int hs_init_lua(lua_State *L)
+static void lib_enter(void) __attribute__((constructor));
+static void lib_enter(void)
 {
+    //static char *argv[] = { "libmpv-cut.so", 0 }, **argv_ = argv;
+    //static int argc = 1;
+    //hs_init(&argc, &argv_);
     hs_init(NULL, NULL);
-    return 0;
 }
 
-int hs_exit_lua(lua_State *L)
+static void lib_exit(void) __attribute__((destructor));
+static void lib_exit(void)
 {
     hs_exit();
-    return 0;
 }
 
 int luaopen_lualibhelper(lua_State *L)
 {
-    lua_pushcfunction(L, hs_init_lua);
-    lua_setglobal(L, "hs_init");
-    lua_pushcfunction(L, hs_exit_lua);
-    lua_setglobal(L, "hs_exit");
-
     lua_pushcfunction(L, (int (*)(lua_State*)) l_add);
     lua_setglobal(L, "hsAdd");
 
