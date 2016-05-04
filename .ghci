@@ -1,0 +1,21 @@
+-- Makefile options:
+:set -Wall -no-hs-main -shared -fPIC -dynamic -lHSrts-ghc7.10.3
+
+-- specific GHCi related options:
+:set -o /tmp/ghci-test
+-- :set -fobject-code
+-- without -fobject-code functions cannot be exported
+-- however this way eliminates possibility to use GHCi debugging
+-- so omit unneeded in GHCi exports, this macro is handled in source file
+:set -DGHCI
+
+:{
+    :load Test.hs
+          MPV_Cut.hs
+:}
+
+-- brings all functions and imported modules to global scope
+:{
+    :module *Test
+            *MPV_Cut
+:}
