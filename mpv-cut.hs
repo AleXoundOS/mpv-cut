@@ -1,33 +1,108 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-} -- only for GHCi to avoid mess with foreign export objects
+{-# LANGUAGE TemplateHaskell #-} -- only for embedFile
 module MPV_Cut where
 import Foreign.Ptr
 import Foreign.C.Types
+import Foreign.C.String
+import System.IO.Unsafe (unsafePerformIO)
 import GHC.IO.Handle
-import System.Posix.IO (fdToHandle)
-import qualified Data.ByteString as B
+import System.Posix.IO (fdToHandle, dup)
 import Data.FileEmbed (embedFile)
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString (ByteString, useAsCString) --embedFile and atof
+import Data.List ((\\))
 
-scriptTemplateFile :: B.ByteString
+-- which side of piece: start | end | act as both
+data Side = A | B | X
+    deriving (Eq, Ord, Show)
+
+data TimeStamp = TimeStamp Side BSL.ByteString
+    deriving (Show)
+instance Eq TimeStamp where
+    (TimeStamp _ str1) == (TimeStamp _ str2)
+      = (unsafeReadDouble str1) == (unsafeReadDouble str2)
+instance Ord TimeStamp where
+    (TimeStamp _ str1) < (TimeStamp _ str2)
+      = (unsafeReadDouble str1) < (unsafeReadDouble str2)
+    (TimeStamp _ str1) > (TimeStamp _ str2)
+      = (unsafeReadDouble str1) > (unsafeReadDouble str2)
+    (TimeStamp _ str1) <= (TimeStamp _ str2)
+      = (unsafeReadDouble str1) <= (unsafeReadDouble str2)
+    (TimeStamp _ str1) >= (TimeStamp _ str2)
+      = (unsafeReadDouble str1) >= (unsafeReadDouble str2)
+
+getTimeStampSide :: TimeStamp -> Side
+getTimeStampSide (TimeStamp side _) = side
+
+getTimeStampStr :: TimeStamp -> BSL.ByteString
+getTimeStampStr (TimeStamp _ str) = str
+
+getTimeStampDouble :: TimeStamp -> CDouble
+getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
+
+scriptTemplateFile :: Data.ByteString.ByteString
 scriptTemplateFile = $(embedFile "script_template.sh")
 
 foreign import ccall "stdio.h fileno" fileno :: Ptr CFile -> IO CInt
+foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
+unsafeReadDouble :: BSL.ByteString -> CDouble
+unsafeReadDouble = let toCString = Data.ByteString.useAsCString . BSL.toStrict
+                   in unsafePerformIO . flip toCString c_atof
 
+fpToHandle :: Ptr CFile -> IO Handle
+fpToHandle fp = do
+    int <- fileno fp
+    -- get a duplicate of original file descriptor
+    -- with combination of hClose avoids problem with locked files after write
+    fd <- dup (fromIntegral int)
+    handle <- fdToHandle fd
+    return handle
+
+#ifndef GHCI
 foreign export ccall h_add :: Ptr CFile -> IO CInt
+#endif
 h_add :: Ptr CFile -> IO CInt
 h_add fp = do
-    fd <- fileno fp
-    handle <- fdToHandle $ fromIntegral fd
-    --hSetBuffering handle LineBuffering
-    add handle
-    hFlush handle
+    h <- fpToHandle fp
+
+    -- reading using duplicate Handle to avoid semi-closed Handle afterwards
+    hSeek h AbsoluteSeek 0
+    h2 <- hDuplicate h
+    input <- BSL.hGetContents h2
+
+    -- processing and writing
+    --hSeek h SeekFromEnd 0
+    BSL.hPutStr h (add input)
+
+    hClose h2
+    hClose h
     return 0
 
-add :: Handle -> IO ()
-add h = do
-    hSeek h AbsoluteSeek 0
-    --line <- hGetLine h
-    --hPutStr h line
-    h2 <- hDuplicate h
-    string <- hGetContents h2
-    hPutStr h string
-    B.hPutStr h scriptTemplateFile
+-- allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+-- allPieces ts = allFirstClassPieces ts []
+
+firstClassPieces
+  :: [TimeStamp] -> [(TimeStamp,TimeStamp)] -> [(TimeStamp,TimeStamp)]
+firstClassPieces ts piecesAcc = let pieces = firstCitizens (tail ts) (head ts)
+    in if not . null $ pieces
+       then firstClassPieces (ts \\ tuplesToList pieces) (piecesAcc ++ pieces)
+       else piecesAcc
+
+-- gets first straight A-B pieces, picking them out of the whole list
+--firstCitizens :: [TimeStamp] -> TimeStamp -> [(TimeStamp, TimeStamp)]
+--firstCitizens
+ -- :: [TimeStamp] -> TimeStamp -> [((TimeStamp Side A _),(TimeStamp Side B _))]
+
+tuplesToList :: [(a,a)] -> [a]
+tuplesToList ((a,b):xs) = a : b : tuplesToList xs
+tuplesToList _          = []
+
+firstCitizens :: [TimeStamp] -> TimeStamp -> [(TimeStamp,TimeStamp)]
+firstCitizens (x:xs) prev =
+    if getTimeStampSide prev == A && getTimeStampSide x == B
+    then (prev,x) : (firstCitizens xs x)
+    else firstCitizens xs x
+firstCitizens [] _ = []
+
+add :: BSL.ByteString -> BSL.ByteString
+add input = BSL.fromStrict scriptTemplateFile
