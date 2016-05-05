@@ -83,26 +83,23 @@ h_add fp = do
 
 firstClassPieces
   :: [TimeStamp] -> [(TimeStamp,TimeStamp)] -> [(TimeStamp,TimeStamp)]
-firstClassPieces ts piecesAcc = let pieces = firstCitizens (tail ts) (head ts)
+firstClassPieces ts piecesAcc = let pieces = firstCitizens ts
     in if not . null $ pieces
        then firstClassPieces (ts \\ tuplesToList pieces) (piecesAcc ++ pieces)
        else piecesAcc
-
--- gets first straight A-B pieces, picking them out of the whole list
---firstCitizens :: [TimeStamp] -> TimeStamp -> [(TimeStamp, TimeStamp)]
---firstCitizens
- -- :: [TimeStamp] -> TimeStamp -> [((TimeStamp Side A _),(TimeStamp Side B _))]
 
 tuplesToList :: [(a,a)] -> [a]
 tuplesToList ((a,b):xs) = a : b : tuplesToList xs
 tuplesToList _          = []
 
-firstCitizens :: [TimeStamp] -> TimeStamp -> [(TimeStamp,TimeStamp)]
-firstCitizens (x:xs) prev =
-    if getTimeStampSide prev == A && getTimeStampSide x == B
-    then (prev,x) : (firstCitizens xs x)
-    else firstCitizens xs x
-firstCitizens [] _ = []
+-- gets first straight A-B pieces, picking them out of the whole list
+firstCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+firstCitizens (x:y:xs) =
+    if getTimeStampSide x == A && getTimeStampSide y == B
+    then (x,y) : (firstCitizens (y:xs))
+    else firstCitizens (y:xs)
+firstCitizens (_:_) = []
+firstCitizens [] = []
 
 add :: BSL.ByteString -> BSL.ByteString
 add input = BSL.fromStrict scriptTemplateFile
