@@ -3,7 +3,7 @@
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
-#include "mpv-cut_stub.h"
+#include "MPV_Cut_stub.h"
 
 /** taken from liolib.c *******************************************************/
 typedef luaL_Stream LStream;
