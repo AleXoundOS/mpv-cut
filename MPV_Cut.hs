@@ -95,7 +95,7 @@ tuplesToList _          = []
 -- gets first straight A-B pieces, picking them out of the whole list
 firstCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
 firstCitizens (x:y:xs) =
-    if getTimeStampSide x == A && getTimeStampSide y == B
+    if (getTimeStampSide x) `elem` [A,X] && (getTimeStampSide y) `elem` [B,X]
     then (x,y) : (firstCitizens (y:xs))
     else firstCitizens (y:xs)
 firstCitizens (_:_) = []
