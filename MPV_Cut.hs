@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-} -- only for GHCi to avoid mess with foreign export objects
 {-# LANGUAGE TemplateHaskell #-} -- only for embedFile
+{-# LANGUAGE OverloadedStrings #-}
 module MPV_Cut where
 import Foreign.Ptr
 import Foreign.C.Types
@@ -13,7 +14,7 @@ import qualified Data.ByteString (ByteString, useAsCString) --embedFile and atof
 import Data.List ((\\))
 
 -- which side of piece: start | end | act as both
-data Side = A | B | X
+data Side = A | B | X | S | E
     deriving (Eq, Ord, Show)
 
 data TimeStamp = TimeStamp Side BSL.ByteString
@@ -78,14 +79,17 @@ h_add fp = do
     hClose h
     return 0
 
--- allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
--- allPieces ts = firstClassPieces ts []
-
-firstClassPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
-firstClassPieces ts = let pieces = firstCitizens ts
+allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+allPieces ts =
+    let pieces = firstCitizens ts
+        borderTheSide :: TimeStamp -> (TimeStamp,TimeStamp)
+        borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
+                        | getTimeStampSide t == B = (TimeStamp S "", t)
+                        | otherwise = error "unexpected side in borderTheSide"
     in if not . null $ pieces
-       then firstClassPieces (ts \\ tuplesToList pieces) ++ pieces
-       else [] -- once list is being exhausted
+       then allPieces (ts \\ tuplesToList pieces) ++ pieces
+       -- once list is being exhausted
+       else map borderTheSide ts
 
 tuplesToList :: [(a,a)] -> [a]
 tuplesToList ((a,b):xs) = a : b : tuplesToList xs

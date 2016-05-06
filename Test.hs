@@ -10,11 +10,14 @@ list = [ TimeStamp A "0.23"
        , TimeStamp X "1.6"
        , TimeStamp B "1.7"
        , TimeStamp A "2.0"
+       , TimeStamp A "2.1"
        , TimeStamp B "8.0"
+       , TimeStamp B "9.0"
+       , TimeStamp B "9.2"
        ]
 
 test :: [(TimeStamp,TimeStamp)]
 test = MPV_Cut.firstCitizens list
 
 test2 :: [(TimeStamp,TimeStamp)]
-test2 = MPV_Cut.firstClassPieces list
+test2 = MPV_Cut.allPieces list
