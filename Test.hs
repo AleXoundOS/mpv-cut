@@ -17,4 +17,4 @@ test :: [(TimeStamp,TimeStamp)]
 test = MPV_Cut.firstCitizens list
 
 test2 :: [(TimeStamp,TimeStamp)]
-test2 = MPV_Cut.firstClassPieces list []
+test2 = MPV_Cut.firstClassPieces list

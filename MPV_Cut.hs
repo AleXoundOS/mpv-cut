@@ -79,14 +79,13 @@ h_add fp = do
     return 0
 
 -- allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
--- allPieces ts = allFirstClassPieces ts []
+-- allPieces ts = firstClassPieces ts []
 
-firstClassPieces
-  :: [TimeStamp] -> [(TimeStamp,TimeStamp)] -> [(TimeStamp,TimeStamp)]
-firstClassPieces ts piecesAcc = let pieces = firstCitizens ts
+firstClassPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+firstClassPieces ts = let pieces = firstCitizens ts
     in if not . null $ pieces
-       then firstClassPieces (ts \\ tuplesToList pieces) (piecesAcc ++ pieces)
-       else piecesAcc
+       then firstClassPieces (ts \\ tuplesToList pieces) ++ pieces
+       else [] -- once list is being exhausted
 
 tuplesToList :: [(a,a)] -> [a]
 tuplesToList ((a,b):xs) = a : b : tuplesToList xs
