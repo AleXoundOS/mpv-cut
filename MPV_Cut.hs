@@ -16,7 +16,7 @@ import Data.FileEmbed (embedFile)
 
 import Debug.Trace
 myTrace :: Show b => b -> b
-myTrace x = trace ("\ndbg: " ++ show x) x
+myTrace x = trace ("\ntrace: " ++ show x) x
 
 -- which side of piece: start | end | act as both | file start | file end
 data Side = A | B | X | S | E
@@ -46,6 +46,9 @@ getTimeStampStr (TimeStamp _ str) = str
 getTimeStampDouble :: TimeStamp -> CDouble
 getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
 
+version :: BSL.ByteString
+version = "0.1" -- bash script format version
+
 scriptTemplateFile :: Data.ByteString.ByteString
 scriptTemplateFile = $(embedFile "script_template.sh")
 
@@ -74,16 +77,18 @@ h_add fp = do
     -- reading using duplicate Handle to avoid semi-closed Handle afterwards
     hSeek h AbsoluteSeek 0
     h2 <- hDuplicate h
-    input <- BSL.hGetContents h2
+    originalFileContents <- BSL.hGetContents h2
 
     -- processing and writing
     --hSeek h SeekFromEnd 0
-    BSL.hPutStr h (add input)
+    BSL.hPutStr h (add originalFileContents (TimeStamp A "0.0"))
 
     hClose h2
     hClose h
     return 0
 
+-- get closest A/B TimeStamp from the supplied list against specific time
+-- A is searched backward, B is searched forward
 closest :: Side -> CDouble -> [TimeStamp] -> Maybe TimeStamp
 closest s d ts
     | s == A = find ((== A) . getTimeStampSide) (reverse tsBackward)
@@ -110,6 +115,7 @@ borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
                 | getTimeStampSide t == B = (TimeStamp S "", t)
                 | otherwise = error "unexpected side in borderTheSide"
 
+-- straight A-B from bottom to top level ++ closest A/B ++ bordered
 allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
 allPieces ts =
     let lNatives = nativeCitizens ts
@@ -123,12 +129,14 @@ tuplesToList :: [(a,a)] -> [a]
 tuplesToList ((a,b):xs) = a : b : tuplesToList xs
 tuplesToList _          = []
 
+-- all straight A-B from bottom to top
 nativeCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
 nativeCitizens ts =
     let pieces = firstCitizens ts
     in if not . null $ pieces
        then nativeCitizens (ts \\ tuplesToList pieces) ++ pieces
        else []
+    -- maybe concatMap usage here
 
 -- gets first straight A-B pieces, picking them out of the whole list
 firstCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
@@ -139,5 +147,8 @@ firstCitizens (x:y:xs) =
 firstCitizens (_:_) = []
 firstCitizens [] = []
 
-add :: BSL.ByteString -> BSL.ByteString
-add input = BSL.fromStrict scriptTemplateFile
+-- add TimeStamp to existing file
+add :: BSL.ByteString -> TimeStamp -> BSL.ByteString
+add originalFileContents t = BSL.append (myTrace originalFileContents) "Haskell here\n"
+-- add originalFileContents t = BSL.fromStrict scriptTemplateFile
+-- create new script if originalFileContents is empty
