@@ -1,8 +1,11 @@
 -- Makefile options:
-:set -Wall -no-hs-main -shared -fPIC -dynamic -lHSrts-ghc7.10.3
+:set -Wall -no-hs-main
+-- this set of options leads to ghci not reloading functions
+-- :set -Wall -no-hs-main -shared -fPIC -dynamic -lHSrts-ghc7.10.3
 
 -- specific GHCi related options:
 :set -o /tmp/ghci-test
+:set -XOverloadedStrings
 -- :set -fobject-code
 -- without -fobject-code functions cannot be exported
 -- however this way eliminates possibility to use GHCi debugging
