@@ -16,7 +16,7 @@ import Data.FileEmbed (embedFile)
 
 import Debug.Trace
 myTrace :: Show b => b -> b
-myTrace x = traceShow x x
+myTrace x = trace ("\ndbg: " ++ show x) x
 
 -- which side of piece: start | end | act as both | file start | file end
 data Side = A | B | X | S | E
@@ -105,33 +105,29 @@ adoptees remaining ts = foldr f [] remaining
         Nothing -> acc
     f _ _ = error "unexpected side in adoptees"
 
--- allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
--- allPieces ts =
-    -- let borderTheSide :: TimeStamp -> (TimeStamp,TimeStamp)
-        -- borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
-                        -- | getTimeStampSide t == B = (TimeStamp S "", t)
-                        -- | otherwise = error "unexpected side in borderTheSide"
-        -- natives = allNativeCitizens ts
-        -- adoptees = adoptees ts (ts \\ allNativeCitizens)
-    -- in () ++ ()
+borderTheSide :: TimeStamp -> (TimeStamp,TimeStamp)
+borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
+                | getTimeStampSide t == B = (TimeStamp S "", t)
+                | otherwise = error "unexpected side in borderTheSide"
 
-    -- let pieces = firstCitizens ts
-    -- in if not . null $ pieces
-       -- then allPieces (ts \\ tuplesToList pieces) ++ pieces
-       -- -- once list is being exhausted:
-        -- -- connect As with closest B on the right
-        -- -- connect Bs with closest A on the left
-       -- else map borderTheSide ts
+allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+allPieces ts =
+    let lNatives = nativeCitizens ts
+        lAdoptees = adoptees (ts \\ tuplesToList lNatives) ts
+        -- remaining = foldl (\\) ts (map tuplesToList [lNatives, lAdoptees])
+        remaining = foldr ((flip (\\)) . tuplesToList) ts [lNatives, lAdoptees]
+        lBordered = map borderTheSide remaining
+    in sort $ lNatives ++ lAdoptees ++ lBordered
 
 tuplesToList :: [(a,a)] -> [a]
 tuplesToList ((a,b):xs) = a : b : tuplesToList xs
 tuplesToList _          = []
 
-allNativeCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
-allNativeCitizens ts =
+nativeCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+nativeCitizens ts =
     let pieces = firstCitizens ts
     in if not . null $ pieces
-       then allNativeCitizens (ts \\ tuplesToList pieces) ++ pieces
+       then nativeCitizens (ts \\ tuplesToList pieces) ++ pieces
        else []
 
 -- gets first straight A-B pieces, picking them out of the whole list

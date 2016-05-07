@@ -19,11 +19,23 @@ list = [ TimeStamp A "0.23"
        , TimeStamp B "9.2"
        ]
 
+list2 :: [TimeStamp]
+list2 = [ TimeStamp B "0.45"
+        , TimeStamp B "0.9"
+        , TimeStamp B "1.5"
+        , TimeStamp A "1.7"
+        , TimeStamp B "1.8"
+        , TimeStamp A "1.9"
+        ]
+
 test :: [(TimeStamp,TimeStamp)]
 test = MPV_Cut.firstCitizens list
 
 remaining :: [TimeStamp]
-remaining = list \\ (tuplesToList $ allNativeCitizens list)
+remaining = list \\ (tuplesToList $ nativeCitizens list)
 
 test2 :: [(TimeStamp,TimeStamp)]
-test2 = adoptees remaining list
+test2 = allPieces list
+
+test3 :: [(TimeStamp,TimeStamp)]
+test3 = allPieces list2
