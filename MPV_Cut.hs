@@ -8,7 +8,7 @@ import Foreign.C.String
 import System.IO.Unsafe (unsafePerformIO)
 import GHC.IO.Handle
 import System.Posix.IO (fdToHandle, dup)
-import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString (ByteString, useAsCString) --embedFile and atof
 import Data.List ((\\), find, sort)
 
@@ -17,6 +17,7 @@ import Data.FileEmbed (embedFile)
 import Debug.Trace
 myTrace :: Show b => b -> b
 myTrace x = trace ("\ntrace: " ++ show x) x
+
 
 -- which side of piece: start | end | act as both | file start | file end
 data Side = A | B | X | S | E
@@ -45,6 +46,14 @@ getTimeStampStr (TimeStamp _ str) = str
 
 getTimeStampDouble :: TimeStamp -> CDouble
 getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
+
+bstrSide :: Side -> BSL.ByteString
+bstrSide side = case side of
+                    A -> "A"
+                    B -> "B"
+                    X -> "X"
+                    S -> "S"
+                    E -> "E"
 
 version :: BSL.ByteString
 version = "0.1" -- bash script format version
@@ -111,8 +120,8 @@ adoptees remaining ts = foldr f [] remaining
     f _ _ = error "unexpected side in adoptees"
 
 borderTheSide :: TimeStamp -> (TimeStamp,TimeStamp)
-borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
-                | getTimeStampSide t == B = (TimeStamp S "", t)
+borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "null")
+                | getTimeStampSide t == B = (TimeStamp S "null", t)
                 | otherwise = error "unexpected side in borderTheSide"
 
 -- straight A-B from bottom to top level ++ closest A/B ++ bordered
@@ -147,8 +156,20 @@ firstCitizens (x:y:xs) =
 firstCitizens (_:_) = []
 firstCitizens [] = []
 
+bstrPieces :: [(TimeStamp,TimeStamp)] -> BSL.ByteString
+bstrPieces ps = BSL.concat $ map transformPiece ps
+  where
+    transformPiece (t1, t2) =
+        BSL.concat [transformTimeStamp t1, ",", transformTimeStamp t2, " \\\n"]
+    transformTimeStamp (TimeStamp side str) =
+        BSL.concat [bstrSide side, ":", str]
+
 -- add TimeStamp to existing file
 add :: BSL.ByteString -> TimeStamp -> BSL.ByteString
-add originalFileContents t = BSL.append (myTrace originalFileContents) "Haskell here\n"
+add originalFileContents t =
+    -- if not . null $ originalFileContents
+    -- then readPieces
+    -- else
+    BSL.append (myTrace originalFileContents) "Haskell here\n"
 -- add originalFileContents t = BSL.fromStrict scriptTemplateFile
 -- create new script if originalFileContents is empty

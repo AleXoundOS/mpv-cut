@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Test where
 import Data.List
+import qualified Data.ByteString.Lazy
 
 import MPV_Cut
 
@@ -39,3 +40,6 @@ test2 = allPieces list
 
 test3 :: [(TimeStamp,TimeStamp)]
 test3 = allPieces list2
+
+test4 :: Data.ByteString.Lazy.ByteString
+test4 = bstrPieces $ allPieces list
