@@ -8,12 +8,17 @@ import Foreign.C.String
 import System.IO.Unsafe (unsafePerformIO)
 import GHC.IO.Handle
 import System.Posix.IO (fdToHandle, dup)
-import Data.FileEmbed (embedFile)
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString (ByteString, useAsCString) --embedFile and atof
-import Data.List ((\\))
+import Data.List ((\\), find, sort)
 
--- which side of piece: start | end | act as both
+import Data.FileEmbed (embedFile)
+
+import Debug.Trace
+myTrace :: Show b => b -> b
+myTrace x = traceShow x x
+
+-- which side of piece: start | end | act as both | file start | file end
 data Side = A | B | X | S | E
     deriving (Eq, Ord, Show)
 
@@ -79,21 +84,55 @@ h_add fp = do
     hClose h
     return 0
 
-allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
-allPieces ts =
-    let pieces = firstCitizens ts
-        borderTheSide :: TimeStamp -> (TimeStamp,TimeStamp)
-        borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
-                        | getTimeStampSide t == B = (TimeStamp S "", t)
-                        | otherwise = error "unexpected side in borderTheSide"
-    in if not . null $ pieces
-       then allPieces (ts \\ tuplesToList pieces) ++ pieces
-       -- once list is being exhausted
-       else map borderTheSide ts
+closest :: Side -> CDouble -> [TimeStamp] -> Maybe TimeStamp
+closest s d ts
+    | s == A = find ((== A) . getTimeStampSide) (reverse tsBackward)
+    | s == B = find ((== B) . getTimeStampSide) tsForward
+    | otherwise = error "unexpected side in closest"
+  where
+    st = sort ts
+    tsForward =  dropWhile (( <= d ) . getTimeStampDouble) st
+    tsBackward = takeWhile ((  < d ) . getTimeStampDouble) st
+
+adoptees :: [TimeStamp] -> [TimeStamp] -> [(TimeStamp,TimeStamp)]
+adoptees remaining ts = foldr f [] remaining
+  where
+    f tA@(TimeStamp A s) acc = case (closest B (unsafeReadDouble s) ts) of
+        Just tB -> (tA, tB) : acc
+        Nothing -> acc
+    f tB@(TimeStamp B s) acc = case (closest A (unsafeReadDouble s) ts) of
+        Just tA -> (tA, tB) : acc
+        Nothing -> acc
+    f _ _ = error "unexpected side in adoptees"
+
+-- allPieces :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+-- allPieces ts =
+    -- let borderTheSide :: TimeStamp -> (TimeStamp,TimeStamp)
+        -- borderTheSide t | getTimeStampSide t == A = (t, TimeStamp E "")
+                        -- | getTimeStampSide t == B = (TimeStamp S "", t)
+                        -- | otherwise = error "unexpected side in borderTheSide"
+        -- natives = allNativeCitizens ts
+        -- adoptees = adoptees ts (ts \\ allNativeCitizens)
+    -- in () ++ ()
+
+    -- let pieces = firstCitizens ts
+    -- in if not . null $ pieces
+       -- then allPieces (ts \\ tuplesToList pieces) ++ pieces
+       -- -- once list is being exhausted:
+        -- -- connect As with closest B on the right
+        -- -- connect Bs with closest A on the left
+       -- else map borderTheSide ts
 
 tuplesToList :: [(a,a)] -> [a]
 tuplesToList ((a,b):xs) = a : b : tuplesToList xs
 tuplesToList _          = []
+
+allNativeCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
+allNativeCitizens ts =
+    let pieces = firstCitizens ts
+    in if not . null $ pieces
+       then allNativeCitizens (ts \\ tuplesToList pieces) ++ pieces
+       else []
 
 -- gets first straight A-B pieces, picking them out of the whole list
 firstCitizens :: [TimeStamp] -> [(TimeStamp,TimeStamp)]
