@@ -1,6 +1,15 @@
 {-# LANGUAGE CPP #-} -- only for GHCi to avoid mess with foreign export objects
 {-# LANGUAGE TemplateHaskell #-} -- only for embedFile
 {-# LANGUAGE OverloadedStrings #-}
+-- |
+-- Module      : MPV_Cut
+-- Copyright   : (c) 2016 Alexander Tomokhov
+--
+-- License     : GPL3
+-- Maintainer  : alexoundos@ya.ru
+-- Stability   : experimental
+-- Portability : GHC
+
 module MPV_Cut where
 import Foreign.Ptr
 import Foreign.C.Types
