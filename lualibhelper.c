@@ -23,11 +23,7 @@ int l_add(lua_State *L)
 {
     FILE *fp = tofile(L); ///< file must be 1st argument
 
-    fprintf(fp, "oh yeah\n");
-
-    printf("hsAdd returned %d\n", h_add(fp));
-
-    uint8_t side;
+    char side;
     int number = luaL_checkint(L, 2);
     if (number >= 0 || number < (1 << (sizeof(side)*8)))
         side = number;
@@ -35,7 +31,11 @@ int l_add(lua_State *L)
         luaL_error(L, "side value exceeds limits");
     printf("got side = %hhu\n", side);
 
-    lua_pushnumber(L, side);
+    char time[] = "0.5";
+    int retCode = h_add(fp, side, &time);
+    printf("hsAdd returned %d\n", retCode);
+
+    lua_pushnumber(L, retCode);
 
     return 1;
 }

@@ -9,8 +9,9 @@ import System.IO.Unsafe (unsafePerformIO)
 import GHC.IO.Handle
 import System.Posix.IO (fdToHandle, dup)
 import qualified Data.ByteString.Lazy.Char8 as BSL
-import qualified Data.ByteString (ByteString, useAsCString) --embedFile and atof
+import qualified Data.ByteString (ByteString, useAsCString, packCString)
 import Data.List ((\\), find, sort)
+import Text.Read (readMaybe)
 
 import Data.FileEmbed (embedFile)
 
@@ -21,7 +22,7 @@ myTrace x = trace ("\ntrace: " ++ show x) x
 
 -- which side of piece: start | end | act as both | file start | file end
 data Side = A | B | X | S | E
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, Read)
 
 data TimeStamp = TimeStamp Side BSL.ByteString
     deriving (Show)
@@ -47,14 +48,6 @@ getTimeStampStr (TimeStamp _ str) = str
 getTimeStampDouble :: TimeStamp -> CDouble
 getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
 
-bstrSide :: Side -> BSL.ByteString
-bstrSide side = case side of
-                    A -> "A"
-                    B -> "B"
-                    X -> "X"
-                    S -> "S"
-                    E -> "E"
-
 version :: BSL.ByteString
 version = "0.1" -- bash script format version
 
@@ -77,24 +70,33 @@ fpToHandle fp = do
     return handle
 
 #ifndef GHCI
-foreign export ccall h_add :: Ptr CFile -> IO CInt
+foreign export ccall h_add :: Ptr CFile -> CChar -> CString -> IO CInt
 #endif
-h_add :: Ptr CFile -> IO CInt
-h_add fp = do
-    h <- fpToHandle fp
+h_add :: Ptr CFile -> Char -> CString -> IO CInt
+h_add fp char str = do
+    let maybeSide = readMaybe [char]
+    if maybeSide == Nothing
+        then do
+            return 1
+        else do
+            let side = (\(Just x) -> x) maybeSide
+            timeBind <- Data.ByteString.packCString str
+            let time = BSL.fromStrict timeBind
 
-    -- reading using duplicate Handle to avoid semi-closed Handle afterwards
-    hSeek h AbsoluteSeek 0
-    h2 <- hDuplicate h
-    originalFileContents <- BSL.hGetContents h2
+            h <- fpToHandle fp
 
-    -- processing and writing
-    --hSeek h SeekFromEnd 0
-    BSL.hPutStr h (add originalFileContents (TimeStamp A "0.0"))
+            -- reading using duplicate Handle to avoid semi-closed Handle afterwards
+            hSeek h AbsoluteSeek 0
+            h2 <- hDuplicate h
+            originalFileContents <- BSL.hGetContents h2
 
-    hClose h2
-    hClose h
-    return 0
+            -- processing and writing
+            --hSeek h SeekFromEnd 0
+            BSL.hPutStr h (add originalFileContents (TimeStamp side time))
+
+            hClose h2
+            hClose h
+            return 0
 
 -- get closest A/B TimeStamp from the supplied list against specific time
 -- A is searched backward, B is searched forward
@@ -162,7 +164,7 @@ bstrPieces ps = BSL.concat $ map transformPiece ps
     transformPiece (t1, t2) =
         BSL.concat [transformTimeStamp t1, ",", transformTimeStamp t2, " \\\n"]
     transformTimeStamp (TimeStamp side str) =
-        BSL.concat [bstrSide side, ":", str]
+        BSL.concat [BSL.pack $ show side, ":", str]
 
 -- add TimeStamp to existing file
 add :: BSL.ByteString -> TimeStamp -> BSL.ByteString
