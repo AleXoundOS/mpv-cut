@@ -79,7 +79,7 @@ fpToHandle fp = do
     return handle
 
 #ifndef GHCI
-foreign export ccall h_add :: Ptr CFile -> CChar -> CString -> IO CInt
+foreign export ccall h_add :: Ptr CFile -> Char -> CString -> IO CInt
 #endif
 h_add :: Ptr CFile -> Char -> CString -> IO CInt
 h_add fp char str = do
@@ -101,7 +101,7 @@ h_add fp char str = do
 
             -- processing and writing
             --hSeek h SeekFromEnd 0
-            BSL.hPutStr h (add originalFileContents (TimeStamp side time))
+            BSL.hPutStr h $ add originalFileContents (TimeStamp side time)
 
             hClose h2
             hClose h
