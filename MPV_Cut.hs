@@ -17,12 +17,15 @@ import Foreign.C.String
 import System.IO.Unsafe (unsafePerformIO)
 import GHC.IO.Handle
 import System.Posix.IO (fdToHandle, dup)
+import System.Posix.Types (Fd)
+import Foreign.Marshal.Alloc (allocaBytes)
 import qualified Data.ByteString.Lazy.Char8 as BSL
-import qualified Data.ByteString (ByteString, useAsCString, packCString)
+import qualified Data.ByteString as BS
+  (ByteString, useAsCString, packCString, packCStringLen, concat)
 import Data.List ((\\), find, sort)
 import Text.Read (readMaybe)
-
 import Data.FileEmbed (embedFile)
+import Data.ByteString.Lazy.Search as BSLS (replace)
 
 import Debug.Trace
 myTrace :: Show b => b -> b
@@ -60,48 +63,75 @@ getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
 version :: BSL.ByteString
 version = "0.1" -- bash script format version
 
-scriptTemplateFile :: Data.ByteString.ByteString
-scriptTemplateFile = $(embedFile "script_template.sh")
+scriptTemplateFile :: BSL.ByteString
+scriptTemplateFile = BSL.fromStrict $(embedFile "script_template.sh")
 
-foreign import ccall "stdio.h fileno" fileno :: Ptr CFile -> IO CInt
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
+
 unsafeReadDouble :: BSL.ByteString -> CDouble
-unsafeReadDouble = let toCString = Data.ByteString.useAsCString . BSL.toStrict
+unsafeReadDouble = let toCString = BS.useAsCString . BSL.toStrict
                    in unsafePerformIO . flip toCString c_atof
 
-fpToHandle :: Ptr CFile -> IO Handle
-fpToHandle fp = do
+foreign import ccall "unistd.h readlink" readlink
+  :: CString -> Ptr CChar -> CSize -> IO CSize
+
+filenameFromFd :: Fd -> IO BSL.ByteString
+filenameFromFd fd = allocaBytes 256 $ \ptr -> do
+    path <- newCString ("/proc/self/fd/" ++ (show fd))
+    retCode <- readlink path ptr 256
+    if retCode /= -1
+        then do
+            strictString <- BS.packCStringLen (ptr, fromIntegral retCode)
+            return $ BSL.fromStrict strictString
+        else do
+            return BSL.empty
+
+foreign import ccall "stdio.h fileno" fileno :: Ptr CFile -> IO CInt
+
+fpToFd :: Ptr CFile -> IO Fd
+fpToFd fp = do
     int <- fileno fp
     -- get a duplicate of original file descriptor
     -- with combination of hClose avoids problem with locked files after write
     fd <- dup (fromIntegral int)
-    handle <- fdToHandle fd
-    return handle
+    return fd
 
 #ifndef GHCI
 foreign export ccall h_add :: Ptr CFile -> Char -> CString -> IO CInt
 #endif
 h_add :: Ptr CFile -> Char -> CString -> IO CInt
 h_add fp char str = do
-    let maybeSide = readMaybe [char]
+    let maybeSide :: Maybe Side
+        maybeSide = readMaybe [char]
     if maybeSide == Nothing
         then do
             return 1
         else do
+            fd <- fpToFd fp
+
+            -- | fetching parameters for add
             let side = (\(Just x) -> x) maybeSide
-            timeBind <- Data.ByteString.packCString str
+
+            timeBind <- BS.packCString (str)
             let time = BSL.fromStrict timeBind
 
-            h <- fpToHandle fp
+            filename <- filenameFromFd fd
 
+
+            h <- fdToHandle fd
             -- reading using duplicate Handle to avoid semi-closed Handle afterwards
-            hSeek h AbsoluteSeek 0
             h2 <- hDuplicate h
+            hSetBuffering h2 NoBuffering
+            hSeek h2 AbsoluteSeek 0
             originalFileContents <- BSL.hGetContents h2
 
             -- processing and writing
-            --hSeek h SeekFromEnd 0
-            BSL.hPutStr h $ add originalFileContents (TimeStamp side time)
+            hSetBuffering h NoBuffering
+            -- hSeek h SeekFromEnd 0
+            hSeek h AbsoluteSeek 0
+
+            BSL.hPutStr h
+              $ add originalFileContents filename (TimeStamp side time)
 
             hClose h2
             hClose h
@@ -175,12 +205,26 @@ bstrPieces ps = BSL.concat $ map transformPiece ps
     transformTimeStamp (TimeStamp side str) =
         BSL.concat [BSL.pack $ show side, ":", str]
 
+substituteInTemplate
+  :: (BSL.ByteString, BSL.ByteString, BSL.ByteString, BSL.ByteString)
+  -> BSL.ByteString -> BSL.ByteString
+substituteInTemplate (version, extension, source, pieces) template =
+    let subTable :: [(BS.ByteString, BSL.ByteString)]
+        subTable = [ ( "{{VERSION}}",    version   )
+                   , ( "{{EXTENSION}}",  extension )
+                   , ( "{{SOURCE}}",     source    )
+                   , ( "{{PIECES}}",     pieces    )
+                   ]
+        r (toRep, withRep) = BSLS.replace toRep (BSL.concat ["\"",withRep,"\""])
+    in foldr r template subTable
+
 -- add TimeStamp to existing file
-add :: BSL.ByteString -> TimeStamp -> BSL.ByteString
-add originalFileContents t =
+add :: BSL.ByteString -> BSL.ByteString -> TimeStamp -> BSL.ByteString
+add originalFileContents filename t =
     -- if not . null $ originalFileContents
     -- then readPieces
     -- else
-    BSL.append (myTrace originalFileContents) "Haskell here\n"
+    substituteInTemplate (version, "mkv", filename, "pieces") scriptTemplateFile
+    -- BSL.append "Haskell is here\n" (myTrace originalFileContents)
 -- add originalFileContents t = BSL.fromStrict scriptTemplateFile
 -- create new script if originalFileContents is empty
