@@ -73,6 +73,10 @@ outFileExtension = "mkv"
 newtype Piece = Piece (TimeStamp,TimeStamp)
     deriving (Eq, Ord, Show)
 
+newtype ScriptData = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString
+                                , BSL.ByteString )
+    deriving (Eq, Ord, Show)
+
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
 
 unsafeReadDouble :: BSL.ByteString -> CDouble
@@ -212,10 +216,8 @@ bstrPieces ps = BSL.concat $ map transformPiece ps
     transformTimeStamp (TimeStamp side str) =
         BSL.concat [BSL.pack $ show side, ":", str]
 
-substituteInTemplate
-  :: (BSL.ByteString, BSL.ByteString, BSL.ByteString, BSL.ByteString)
-  -> BSL.ByteString -> BSL.ByteString
-substituteInTemplate (version, extension, source, pieces) template =
+substituteInTemplate :: ScriptData -> BSL.ByteString -> BSL.ByteString
+substituteInTemplate (ScriptData (version, extension, source, pieces)) template =
     let subTable :: [(BS.ByteString, BSL.ByteString)]
         subTable = [ ( "{{VERSION}}",    version   )
                    , ( "{{EXTENSION}}",  extension )
@@ -225,13 +227,17 @@ substituteInTemplate (version, extension, source, pieces) template =
         r (what, with) = BSLS.replace what (BSL.concat ["\"", with, "\""])
     in foldr r template subTable
 
+-- readScriptData :: BSL.ByteString -> ScriptData
+-- readScriptData originalFileContents =
+
 -- add TimeStamp to existing file
 add :: BSL.ByteString -> BSL.ByteString -> TimeStamp -> BSL.ByteString
 add originalFileContents filename t =
     -- if not . null $ originalFileContents
     -- then readPieces
     -- else
-    substituteInTemplate (scriptVersion, outFileExtension, filename, "pieces")
+    substituteInTemplate (ScriptData ( scriptVersion, outFileExtension, filename
+                                     , "pieces" ))
                          scriptTemplateFile
     -- BSL.append "Haskell is here\n" (myTrace originalFileContents)
 -- add originalFileContents t = BSL.fromStrict scriptTemplateFile
