@@ -29,16 +29,16 @@ list2 = [ TimeStamp B "0.45"
         , TimeStamp A "1.9"
         ]
 
-test :: [(TimeStamp,TimeStamp)]
+test :: [Piece]
 test = MPV_Cut.firstCitizens list
 
 remaining :: [TimeStamp]
-remaining = list \\ (tuplesToList $ nativeCitizens list)
+remaining = list \\ (piecesToList $ nativeCitizens list)
 
-test2 :: [(TimeStamp,TimeStamp)]
+test2 :: [Piece]
 test2 = allPieces list
 
-test3 :: [(TimeStamp,TimeStamp)]
+test3 :: [Piece]
 test3 = allPieces list2
 
 test4 :: Data.ByteString.Lazy.ByteString
