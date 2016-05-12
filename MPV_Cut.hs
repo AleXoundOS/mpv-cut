@@ -60,11 +60,14 @@ getTimeStampStr (TimeStamp _ str) = str
 getTimeStampDouble :: TimeStamp -> CDouble
 getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
 
-version :: BSL.ByteString
-version = "0.1" -- bash script format version
+scriptVersion :: BSL.ByteString
+scriptVersion = "0.1" -- bash script format version
 
 scriptTemplateFile :: BSL.ByteString
 scriptTemplateFile = BSL.fromStrict $(embedFile "script_template.sh")
+
+outFileExtension :: BSL.ByteString
+outFileExtension = "mkv"
 
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
 
@@ -215,7 +218,7 @@ substituteInTemplate (version, extension, source, pieces) template =
                    , ( "{{SOURCE}}",     source    )
                    , ( "{{PIECES}}",     pieces    )
                    ]
-        r (toRep, withRep) = BSLS.replace toRep (BSL.concat ["\"",withRep,"\""])
+        r (what, with) = BSLS.replace what (BSL.concat ["\"", with, "\""])
     in foldr r template subTable
 
 -- add TimeStamp to existing file
@@ -224,7 +227,8 @@ add originalFileContents filename t =
     -- if not . null $ originalFileContents
     -- then readPieces
     -- else
-    substituteInTemplate (version, "mkv", filename, "pieces") scriptTemplateFile
+    substituteInTemplate (scriptVersion, outFileExtension, filename, "pieces")
+                         scriptTemplateFile
     -- BSL.append "Haskell is here\n" (myTrace originalFileContents)
 -- add originalFileContents t = BSL.fromStrict scriptTemplateFile
 -- create new script if originalFileContents is empty
