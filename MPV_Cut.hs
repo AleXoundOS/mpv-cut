@@ -17,11 +17,8 @@ import Foreign.C.String
 import System.IO.Unsafe (unsafePerformIO)
 import GHC.IO.Handle
 import System.Posix.IO (fdToHandle, dup)
-import System.Posix.Types (Fd)
-import Foreign.Marshal.Alloc (allocaBytes)
 import qualified Data.ByteString.Lazy.Char8 as BSL
-import qualified Data.ByteString as BS
-  (ByteString, useAsCString, packCString, packCStringLen, concat)
+import qualified Data.ByteString as BS (ByteString, useAsCString, packCString)
 import Data.List ((\\), find, sort)
 import Text.Read (readMaybe)
 import Data.FileEmbed (embedFile)
@@ -83,29 +80,16 @@ unsafeReadDouble :: BSL.ByteString -> CDouble
 unsafeReadDouble = let toCString = BS.useAsCString . BSL.toStrict
                    in unsafePerformIO . flip toCString c_atof
 
-foreign import ccall "unistd.h readlink" readlink
-  :: CString -> Ptr CChar -> CSize -> IO CSize
-
-filenameFromFd :: Fd -> IO BSL.ByteString
-filenameFromFd fd = allocaBytes 256 $ \ptr -> do
-    path <- newCString ("/proc/self/fd/" ++ (show fd))
-    retCode <- readlink path ptr 256
-    if retCode /= -1
-        then do
-            strictString <- BS.packCStringLen (ptr, fromIntegral retCode)
-            return $ BSL.fromStrict strictString
-        else do
-            return BSL.empty
-
 foreign import ccall "stdio.h fileno" fileno :: Ptr CFile -> IO CInt
 
-fpToFd :: Ptr CFile -> IO Fd
-fpToFd fp = do
+fpToHandle :: Ptr CFile -> IO Handle
+fpToHandle fp = do
     int <- fileno fp
     -- get a duplicate of original file descriptor
     -- with combination of hClose avoids problem with locked files after write
     fd <- dup (fromIntegral int)
-    return fd
+    handle <- fdToHandle fd
+    return handle
 
 #ifndef GHCI
 foreign export ccall h_add :: Ptr CFile -> Char -> CString -> IO CInt
@@ -118,18 +102,13 @@ h_add fp char str = do
         then do
             return 1
         else do
-            fd <- fpToFd fp
-
             -- | fetching parameters for add
             let side = (\(Just x) -> x) maybeSide
 
             timeBind <- BS.packCString (str)
             let time = BSL.fromStrict timeBind
 
-            filename <- filenameFromFd fd
-
-
-            h <- fdToHandle fd
+            h <- fpToHandle fp
             -- reading using duplicate Handle to avoid semi-closed Handle afterwards
             h2 <- hDuplicate h
             hSetBuffering h2 NoBuffering
@@ -142,7 +121,7 @@ h_add fp char str = do
             hSeek h AbsoluteSeek 0
 
             BSL.hPutStr h
-              $ add originalFileContents filename (TimeStamp side time)
+              $ add originalFileContents "" (TimeStamp side time)
 
             hClose h2
             hClose h
