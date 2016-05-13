@@ -7,7 +7,7 @@ f = io.open("syntax_highlight.html", "r+")
 --do
     --f:write("123\n")
     --f:flush()
-print(hsAdd(f, string.byte("A", 1), "0.5"))
+print(hsAdd(f, "filename", string.byte("A", 1), "0.734533"))
     --io.read()
 --end
 f:close()

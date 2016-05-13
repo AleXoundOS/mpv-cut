@@ -92,10 +92,10 @@ fpToHandle fp = do
     return handle
 
 #ifndef GHCI
-foreign export ccall h_add :: Ptr CFile -> Char -> CString -> IO CInt
+foreign export ccall h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
 #endif
-h_add :: Ptr CFile -> Char -> CString -> IO CInt
-h_add fp char str = do
+h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
+h_add fp cfilename char str = do
     let maybeSide :: Maybe Side
         maybeSide = readMaybe [char]
     if maybeSide == Nothing
@@ -103,9 +103,12 @@ h_add fp char str = do
             return 1
         else do
             -- | fetching parameters for add
+            filenameBind <- BS.packCString cfilename
+            let filename = BSL.fromStrict filenameBind
+
             let side = (\(Just x) -> x) maybeSide
 
-            timeBind <- BS.packCString (str)
+            timeBind <- BS.packCString str
             let time = BSL.fromStrict timeBind
 
             h <- fpToHandle fp
@@ -121,7 +124,7 @@ h_add fp char str = do
             hSeek h AbsoluteSeek 0
 
             BSL.hPutStr h
-              $ add originalFileContents "" (TimeStamp side time)
+              $ add originalFileContents filename (TimeStamp side time)
 
             hClose h2
             hClose h

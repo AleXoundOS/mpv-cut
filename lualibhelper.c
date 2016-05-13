@@ -23,9 +23,14 @@ int l_add(lua_State *L)
 {
     FILE *fp = tofile(L); ///< file must be 1st argument
 
+    /** getting filename of video source */
+    const char *filename = luaL_checkstring(L, 2);
+    if (!filename)
+        luaL_error(L, "cannot parse time string");
+
     /** getting side */
     char side;
-    int number = luaL_checkint(L, 2);
+    int number = luaL_checkint(L, 3);
     if (number >= 0 || number < (1 << (sizeof(side)*8)))
         side = number;
     else
@@ -33,11 +38,11 @@ int l_add(lua_State *L)
     printf("got side = %hhu\n", side);
 
     /** getting time in string format */
-    const char *time = luaL_checkstring(L, 3);
+    const char *time = luaL_checkstring(L, 4);
     if (!time)
         luaL_error(L, "cannot parse time string");
 
-    int retCode = h_add(fp, side, (char *) time);
+    int retCode = h_add(fp, (HsPtr *) filename, side, (HsPtr *) time);
     printf("hsAdd returned %d\n", retCode);
 
     lua_pushnumber(L, retCode);
