@@ -1,8 +1,8 @@
 #!/bin/sh
 
-VERSION={{VERSION}}
-OUT_EXT={{EXTENSION}}
-SOURCE_NAME={{SOURCE}}
+VERSION="0.1"
+OUT_EXT="mkv"
+SOURCE_NAME="video_filename"
 
 function dst_file {
     echo "$SOURCE_NAME.$1.$OUT_EXT"
@@ -15,7 +15,8 @@ FFMPEG_CMD="ffmpeg -i \"$(src_file)\""
 
 i=0
 for piece in \
-{{PIECES}}
+A:0.734533,B:0.834533 \ \
+A:1.734533,E:null \
 ;
 do IFS=","; set -- $piece
     A=$(echo $1 | cut -d':' -f2)

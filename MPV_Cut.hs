@@ -19,7 +19,7 @@ import GHC.IO.Handle
 import System.Posix.IO (fdToHandle, dup)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.Char8 as BS
-  (ByteString, useAsCString, packCString, cons)
+  (ByteString, useAsCString, packCString, cons, hGetContents)
 import Data.List ((\\), find, sort)
 import Text.Read (readMaybe)
 import Data.FileEmbed (embedFile)
@@ -113,19 +113,17 @@ h_add fp cMediaFilename char str = do
             let time = BSL.fromStrict timeBind
 
             h <- fpToHandle fp
+
             -- read using duplicate Handle - avoid semi-closed Handle afterwards
             h2 <- hDuplicate h
-            -- hSetBuffering h2 NoBuffering
             hSeek h2 AbsoluteSeek 0
-            inpFileContents <- BSL.hGetContents h2
+            inpFileContentsStrict <- BS.hGetContents h2
+            let inpFileContents = BSL.fromStrict inpFileContentsStrict
 
             -- processing and writing
-            -- hSetBuffering h NoBuffering
-            -- hSeek h SeekFromEnd 0
             hSeek h AbsoluteSeek 0
-
             BSL.hPutStr h
-              $ myTrace $ add inpFileContents mediaFileName (TimeStamp side time)
+              $ add inpFileContents mediaFileName (TimeStamp side time)
 
             hClose h2
             hClose h
@@ -166,10 +164,11 @@ borderTheSide t | getTimeStampSide t == A = Piece (t, TimeStamp E "null")
 -- straight A-B from bottom to top level ++ closest A/B ++ bordered
 allPieces :: [TimeStamp] -> [Piece]
 allPieces ts =
-    let lNatives = nativeCitizens ts
-        lAdoptees = adoptees (ts \\ piecesToTs lNatives) ts
+    let sts = sort ts
+        lNatives = nativeCitizens sts
+        lAdoptees = adoptees (sts \\ piecesToTs lNatives) sts
         -- remaining = foldl (\\) ts (map piecesToTs [lNatives, lAdoptees])
-        remaining = foldr ((flip (\\)) . piecesToTs) ts [lNatives, lAdoptees]
+        remaining = foldr ((flip (\\)) . piecesToTs) sts [lNatives, lAdoptees]
         lBordered = map borderTheSide remaining
     in sort $ lNatives ++ lAdoptees ++ lBordered
 
@@ -235,7 +234,7 @@ readScriptData inpFileContents
                )
   where
     -- variables are read only inside quotes (first quote Char is just dropped)
-    parseVar precStr = (BSL.dropWhile (/= '\"')) . (BSL.drop 1)
+    parseVar precStr = (BSL.takeWhile (/= '\"')) . (BSL.drop 1)
       $ BSL.takeWhile (/= '\n') $ (afterPart precStr)
     -- pieces are read line by line until ';'
     parsePieces precStr
@@ -265,5 +264,9 @@ add inpFileContents mediaFileName t =
                                               )
                                  )
          where
+            notSE = filter (\(TimeStamp side _) -> side `notElem` [S,E])
+            inpTimeStampsFromPieces = notSE . piecesToTs
             pieces (ScriptData (_, _, _, inpPieces))
-              = allPieces $ t : (piecesToTs inpPieces)
+              = if t `notElem` (inpTimeStampsFromPieces inpPieces)
+                then allPieces $ t : (inpTimeStampsFromPieces inpPieces)
+                else inpPieces
