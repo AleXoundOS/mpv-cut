@@ -31,14 +31,14 @@ list2 = [ TimeStamp B "0.45"
 
 readTest :: IO ()
 readTest = do
-    originalFileContents <- BSL.readFile "script.sh"
-    print $ readScriptData originalFileContents
+    inpFileContents <- BSL.readFile "script.sh"
+    print $ readScriptData inpFileContents
 
 test :: [Piece]
 test = MPV_Cut.firstCitizens list
 
 remaining :: [TimeStamp]
-remaining = list \\ (piecesToList $ nativeCitizens list)
+remaining = list \\ (piecesToTs $ nativeCitizens list)
 
 test2 :: [Piece]
 test2 = allPieces list

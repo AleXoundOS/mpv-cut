@@ -71,8 +71,8 @@ outFileExtension = "mkv"
 newtype Piece = Piece (TimeStamp,TimeStamp)
     deriving (Eq, Ord, Show)
 
-data ScriptData = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString
-                             , [Piece] )
+newtype ScriptData = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString
+                                , [Piece] )
     deriving (Eq, Ord, Show)
 
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
@@ -96,7 +96,7 @@ fpToHandle fp = do
 foreign export ccall h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
 #endif
 h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
-h_add fp cfilename char str = do
+h_add fp cMediaFilename char str = do
     let maybeSide :: Maybe Side
         maybeSide = readMaybe [char]
     if maybeSide == Nothing
@@ -104,8 +104,8 @@ h_add fp cfilename char str = do
             return 1
         else do
             -- | fetching parameters for add
-            filenameBind <- BS.packCString cfilename
-            let filename = BSL.fromStrict filenameBind
+            mediaFilenameBind <- BS.packCString cMediaFilename
+            let mediaFileName = BSL.fromStrict mediaFilenameBind
 
             let side = (\(Just x) -> x) maybeSide
 
@@ -115,21 +115,25 @@ h_add fp cfilename char str = do
             h <- fpToHandle fp
             -- read using duplicate Handle - avoid semi-closed Handle afterwards
             h2 <- hDuplicate h
-            hSetBuffering h2 NoBuffering
+            -- hSetBuffering h2 NoBuffering
             hSeek h2 AbsoluteSeek 0
-            originalFileContents <- BSL.hGetContents h2
+            inpFileContents <- BSL.hGetContents h2
 
             -- processing and writing
-            hSetBuffering h NoBuffering
+            -- hSetBuffering h NoBuffering
             -- hSeek h SeekFromEnd 0
             hSeek h AbsoluteSeek 0
 
             BSL.hPutStr h
-              $ add originalFileContents filename (TimeStamp side time)
+              $ myTrace $ add inpFileContents mediaFileName (TimeStamp side time)
 
             hClose h2
             hClose h
             return 0
+
+nameFromFilename :: BSL.ByteString -> BSL.ByteString
+nameFromFilename filename
+  = BSL.reverse $ BSL.drop 1 $ BSL.dropWhile (/= '.') $ (BSL.reverse filename)
 
 -- get closest A/B TimeStamp from the supplied list against specific time
 -- A is searched backward, B is searched forward
@@ -163,22 +167,22 @@ borderTheSide t | getTimeStampSide t == A = Piece (t, TimeStamp E "null")
 allPieces :: [TimeStamp] -> [Piece]
 allPieces ts =
     let lNatives = nativeCitizens ts
-        lAdoptees = adoptees (ts \\ piecesToList lNatives) ts
-        -- remaining = foldl (\\) ts (map piecesToList [lNatives, lAdoptees])
-        remaining = foldr ((flip (\\)) . piecesToList) ts [lNatives, lAdoptees]
+        lAdoptees = adoptees (ts \\ piecesToTs lNatives) ts
+        -- remaining = foldl (\\) ts (map piecesToTs [lNatives, lAdoptees])
+        remaining = foldr ((flip (\\)) . piecesToTs) ts [lNatives, lAdoptees]
         lBordered = map borderTheSide remaining
     in sort $ lNatives ++ lAdoptees ++ lBordered
 
-piecesToList :: [Piece] -> [TimeStamp]
-piecesToList (Piece (a,b) : xs) = a : b : piecesToList xs
-piecesToList _          = []
+piecesToTs :: [Piece] -> [TimeStamp]
+piecesToTs (Piece (a,b) : xs) = a : b : piecesToTs xs
+piecesToTs _          = []
 
 -- all straight A-B from bottom to top
 nativeCitizens :: [TimeStamp] -> [Piece]
 nativeCitizens ts =
     let pieces = firstCitizens ts
     in if not . null $ pieces
-       then nativeCitizens (ts \\ piecesToList pieces) ++ pieces
+       then nativeCitizens (ts \\ piecesToTs pieces) ++ pieces
        else []
     -- maybe concatMap usage here
 
@@ -199,16 +203,15 @@ bstrPieces ps = BSL.concat $ map transformPiece ps
     transformTimeStamp (TimeStamp side str) =
         BSL.concat [BSL.pack $ show side, ":", str]
 
-substituteInTemplate :: ScriptData -> BSL.ByteString -> BSL.ByteString
-substituteInTemplate (ScriptData (version, extension, source, pieces)) template
+substituteInTemplate :: BSL.ByteString -> ScriptData -> BSL.ByteString
+substituteInTemplate template (ScriptData (version, extension, source, pieces))
   = let subTable :: [(BS.ByteString, BSL.ByteString)]
-        subTable = [ ( "{{VERSION}}",    version   )
-                   , ( "{{EXTENSION}}",  extension )
-                   , ( "{{SOURCE}}",     source    )
-                   , ( "{{PIECES}}",     bstrPieces pieces )
+        subTable = [ ( "{{VERSION}}",    BSL.concat ["\"", version,   "\""] )
+                   , ( "{{EXTENSION}}",  BSL.concat ["\"", extension, "\""] )
+                   , ( "{{SOURCE}}",     BSL.concat ["\"", source,    "\""] )
+                   , ( "{{PIECES}}\n",   bstrPieces pieces )
                    ]
-        r (what, with) = BSLS.replace what (BSL.concat ["\"", with, "\""])
-    in foldr r template subTable
+    in foldr (\(what, with) -> BSLS.replace what with) template subTable
 
 -- this read is not safe (head/last may fail), but we support only valid scripts
 readPiece :: BSL.ByteString -> Piece
@@ -224,7 +227,7 @@ readTimeStamp strTS = let splitted = BSL.split ':' strTS
                                    (last splitted)
 
 readScriptData :: BSL.ByteString -> ScriptData
-readScriptData originalFileContents
+readScriptData inpFileContents
   = ScriptData ( parseVar "VERSION="
                , parseVar "OUT_EXT="
                , parseVar "SOURCE_NAME="
@@ -242,22 +245,25 @@ readScriptData originalFileContents
         -- unsupported script version, don't even try to parse pieces
         else []
     afterPart precStr
-      = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) originalFileContents
+      = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) inpFileContents
 
--- add TimeStamp to existing file
+-- add TimeStamp (with composing and adding new Pieces)
 add :: BSL.ByteString -> BSL.ByteString -> TimeStamp -> BSL.ByteString
-add originalFileContents filename t =
-    -- if not . null $ originalFileContents
-    -- then readPieces
-    -- else
-    -- let scriptData = readScriptData originalFileContents
-    substituteInTemplate (ScriptData ( scriptVersion, outFileExtension, filename
-                                     , [ Piece ( TimeStamp A "0.1"
-                                               , TimeStamp B "0.2"
-                                               )
-                                       ]
-                                     ))
-                         scriptTemplateFile
-    -- BSL.append "Haskell is here\n" (myTrace originalFileContents)
--- add originalFileContents t = BSL.fromStrict scriptTemplateFile
--- create new script if originalFileContents is empty
+add inpFileContents mediaFileName t =
+    let scriptData = readScriptData inpFileContents
+    in if inpFileContents /= BSL.empty
+       && (\(ScriptData (version, _, _, _)) -> version) scriptData == BSL.empty
+       then BSL.concat [ "# attempt to use script with parser of version: "
+                       , scriptVersion , "\n"
+                       , inpFileContents
+                       ]
+       else substituteInTemplate scriptTemplateFile
+                                 ( ScriptData ( scriptVersion
+                                              , outFileExtension
+                                              , nameFromFilename mediaFileName
+                                              , pieces scriptData
+                                              )
+                                 )
+         where
+            pieces (ScriptData (_, _, _, inpPieces))
+              = allPieces $ t : (piecesToTs inpPieces)
