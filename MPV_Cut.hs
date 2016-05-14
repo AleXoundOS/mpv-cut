@@ -23,7 +23,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.List ((\\), find, sort)
 import Text.Read (readMaybe)
 import Data.FileEmbed (embedFile)
-import Data.ByteString.Lazy.Search as BSLS (replace, breakOn)
+import Data.ByteString.Lazy.Search as BSLS (replace, breakAfter)
 
 import Debug.Trace
 myTrace :: Show b => b -> b
@@ -210,12 +210,14 @@ substituteInTemplate (ScriptData (version, extension, source, pieces)) template
         r (what, with) = BSLS.replace what (BSL.concat ["\"", with, "\""])
     in foldr r template subTable
 
+-- this read is not safe (head/last may fail), but we support only valid scripts
 readPiece :: BSL.ByteString -> Piece
 readPiece strP = Piece ( readTimeStamp $ head splitted
                        , readTimeStamp $ last splitted )
   where
     splitted = BSL.split ',' strP
 
+-- this read is not safe (read may fail), but we support only valid scripts
 readTimeStamp :: BSL.ByteString -> TimeStamp
 readTimeStamp strTS = let splitted = BSL.split ':' strTS
                       in TimeStamp (read $ BSL.unpack $ head splitted)
@@ -229,14 +231,18 @@ readScriptData originalFileContents
                , parsePieces "for piece in \\\n"
                )
   where
-    -- variables are read inside quotes, so first and last characters omitted
-    parseVar precStr = ((BSL.tail . BSL.init) . BSL.takeWhile (/= '\n'))
-                         $ afterPart precStr
+    -- variables are read only inside quotes (first quote Char is just dropped)
+    parseVar precStr = (BSL.dropWhile (/= '\"')) . (BSL.drop 1)
+      $ BSL.takeWhile (/= '\n') $ (afterPart precStr)
     -- pieces are read line by line until ';'
     parsePieces precStr
-      = map readPiece $ BSL.lines $ BSL.takeWhile (/= ';') $ afterPart precStr
+      = if (parseVar "VERSION=") == scriptVersion
+        then map readPiece $ BSL.lines
+          $ BSL.takeWhile (/= ';') $ afterPart precStr
+        -- unsupported script version, don't even try to parse pieces
+        else []
     afterPart precStr
-      = snd $ BSLS.breakOn ('\n' `BS.cons` precStr) originalFileContents
+      = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) originalFileContents
 
 -- add TimeStamp to existing file
 add :: BSL.ByteString -> BSL.ByteString -> TimeStamp -> BSL.ByteString
@@ -244,6 +250,7 @@ add originalFileContents filename t =
     -- if not . null $ originalFileContents
     -- then readPieces
     -- else
+    -- let scriptData = readScriptData originalFileContents
     substituteInTemplate (ScriptData ( scriptVersion, outFileExtension, filename
                                      , [ Piece ( TimeStamp A "0.1"
                                                , TimeStamp B "0.2"

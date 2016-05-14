@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Test where
 import Data.List
-import qualified Data.ByteString.Lazy
+import qualified Data.ByteString.Lazy.Char8 as BSL
 
 import MPV_Cut
 
@@ -29,6 +29,11 @@ list2 = [ TimeStamp B "0.45"
         , TimeStamp A "1.9"
         ]
 
+readTest :: IO ()
+readTest = do
+    originalFileContents <- BSL.readFile "script.sh"
+    print $ readScriptData originalFileContents
+
 test :: [Piece]
 test = MPV_Cut.firstCitizens list
 
@@ -41,5 +46,5 @@ test2 = allPieces list
 test3 :: [Piece]
 test3 = allPieces list2
 
-test4 :: Data.ByteString.Lazy.ByteString
+test4 :: BSL.ByteString
 test4 = bstrPieces $ allPieces list
