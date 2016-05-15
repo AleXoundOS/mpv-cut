@@ -20,7 +20,7 @@ import System.Posix.IO (fdToHandle, dup)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.Char8 as BS
   (ByteString, useAsCString, packCString, cons, hGetContents)
-import Data.List ((\\), find, sort)
+import Data.List ((\\), find, sort, nub)
 import Text.Read (readMaybe)
 import Data.FileEmbed (embedFile)
 import Data.ByteString.Lazy.Search as BSLS (replace, breakAfter)
@@ -268,5 +268,5 @@ add inpFileContents mediaFileName t =
             inpTimeStampsFromPieces = notSE . piecesToTs
             pieces (ScriptData (_, _, _, inpPieces))
               = if t `notElem` (inpTimeStampsFromPieces inpPieces)
-                then allPieces $ t : (inpTimeStampsFromPieces inpPieces)
+                then allPieces $ t : nub (inpTimeStampsFromPieces inpPieces)
                 else inpPieces
