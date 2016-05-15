@@ -217,7 +217,7 @@ readPiece :: BSL.ByteString -> Piece
 readPiece strP = Piece ( readTimeStamp $ head splitted
                        , readTimeStamp $ last splitted )
   where
-    splitted = BSL.split ',' strP
+    splitted = BSL.split ',' (BSL.takeWhile (/= ' ') strP)
 
 -- this read is not safe (read may fail), but we support only valid scripts
 readTimeStamp :: BSL.ByteString -> TimeStamp
