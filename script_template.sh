@@ -19,11 +19,21 @@ for piece in \
 ;
 do IFS=","; set -- $piece
     A=$(echo $1 | cut -d':' -f2)
+    if [ $A != "null" ]; then
+        A="-ss $A"
+    else
+        A=""
+    fi
     B=$(echo $2 | cut -d':' -f2)
+    if [ $B != "null" ]; then
+        B="-to $B"
+    else
+        B=""
+    fi
     IFS=" "
-    #echo from $A to $B
+    
     printf -v NUMBER_STR '%02d' "$i"
-    FFMPEG_CMD="$FFMPEG_CMD -c copy -ss $A -to $B \"$(dst_file $NUMBER_STR)\""
+    FFMPEG_CMD="$FFMPEG_CMD -c copy $A $B \"$(dst_file $NUMBER_STR)\""
     ((i++))
 done
 
