@@ -11,6 +11,7 @@
 -- Portability : GHC
 
 module MPV_Cut where
+import Foreign (poke)
 import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
@@ -69,11 +70,14 @@ outFileExtension = "mkv"
 
 -- this is a Piece of stream, i.e. A-B, A-X, A-E, S-B, S-X, S-E
 newtype Piece = Piece (TimeStamp,TimeStamp)
-    deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show)
 
 newtype ScriptData = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString
                                 , [Piece] )
-    deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show)
+
+data Direction = Forward | Backward
+  deriving (Eq, Show)
 
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
 
@@ -129,6 +133,60 @@ h_add fp cMediaFilename char str = do
             hClose h
             return 0
 
+#ifndef GHCI
+foreign export ccall h_nav
+  :: Ptr CFile -> CString -> Char -> Ptr Char -> Ptr CString -> IO CInt
+#endif
+h_nav :: Ptr CFile -> CString -> Char -> Ptr Char -> Ptr CString -> IO CInt
+h_nav fp c_inTime c_d pSide pTime = do
+    h <- fpToHandle fp
+
+    -- file read
+    h2 <- hDuplicate h
+    hSeek h2 AbsoluteSeek 0
+    inpFileContentsStrict <- BS.hGetContents h2
+    let inpFileContents = BSL.fromStrict inpFileContentsStrict
+
+    -- Time
+    inTimeBind <- BS.packCString c_inTime
+    let inTime = (unsafeReadDouble . BSL.fromStrict) inTimeBind
+
+    if c_d `notElem` ['f', 'b']
+        then do
+            hClose h2
+            hClose h
+            return 2
+        else do
+            -- Direction
+            let d = case c_d of
+                        'f' -> Forward
+                        'b' -> Backward
+                        _   -> error "unexpected direction"
+
+            hSeek h AbsoluteSeek 0
+            case nav inpFileContents inTime d of
+                Left (Just (TimeStamp side time)) -> do
+                    -- writing side by pointer
+                    poke pSide $ (show side) !! 0
+                    -- write time pointer
+                    timeCStr <- BS.useAsCString (BSL.toStrict time) return
+                    poke pTime timeCStr
+                    hClose h2
+                    hClose h
+                    return 0
+                Left Nothing -> do
+                    -- writing side pointer as '\0'
+                    poke pSide '\0'
+                    -- write time pointer as nullPtr
+                    poke pTime nullPtr
+                    hClose h2
+                    hClose h
+                    return 0
+                Right bstr -> do BSL.hPutStr h (BSL.append bstr inpFileContents)
+                                 hClose h2
+                                 hClose h
+                                 return 1
+
 nameFromFilename :: BSL.ByteString -> BSL.ByteString
 nameFromFilename filename
   = BSL.reverse $ BSL.drop 1 $ BSL.dropWhile (/= '.') $ (BSL.reverse filename)
@@ -137,13 +195,13 @@ nameFromFilename filename
 -- A is searched backward, B is searched forward
 closest :: Side -> CDouble -> [TimeStamp] -> Maybe TimeStamp
 closest s d ts
-    | s == A = find ((== A) . getTimeStampSide) (reverse tsBackward)
+    | s == A = find ((== A) . getTimeStampSide) tsBackward
     | s == B = find ((== B) . getTimeStampSide) tsForward
     | otherwise = error "unexpected side in closest"
   where
     st = sort ts
     tsForward =  dropWhile (( <= d ) . getTimeStampDouble) st
-    tsBackward = takeWhile ((  < d ) . getTimeStampDouble) st
+    tsBackward = reverse $ takeWhile ((  < d ) . getTimeStampDouble) st
 
 adoptees :: [TimeStamp] -> [TimeStamp] -> [Piece]
 adoptees remaining ts = foldr f [] remaining
@@ -246,6 +304,21 @@ readScriptData inpFileContents
     afterPart precStr
       = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) inpFileContents
 
+checkVersion :: BSL.ByteString -> ScriptData -> BSL.ByteString
+checkVersion inpFileContents scriptData
+  = if inpFileContents /= BSL.empty
+    && (\(ScriptData (version, _, _, _)) -> version) scriptData == BSL.empty
+    then BSL.concat [ "# attempt to use script with parser of version: "
+                    , scriptVersion , "\n"
+                    ]
+    else BSL.empty
+
+inpTimeStamps :: [Piece] -> [TimeStamp]
+inpTimeStamps ps
+  = let notSE = filter (\(TimeStamp side _) -> side `notElem` [S,E])
+        inpTimeStampsFromPieces = notSE . piecesToTs
+    in nub (inpTimeStampsFromPieces ps)
+
 -- add TimeStamp (with composing and adding new Pieces)
 add :: BSL.ByteString -> BSL.ByteString -> TimeStamp -> BSL.ByteString
 add inpFileContents mediaFileName t =
@@ -264,9 +337,31 @@ add inpFileContents mediaFileName t =
                                               )
                                  )
          where
-            notSE = filter (\(TimeStamp side _) -> side `notElem` [S,E])
-            inpTimeStampsFromPieces = notSE . piecesToTs
             pieces (ScriptData (_, _, _, inpPieces))
-              = if t `notElem` (inpTimeStampsFromPieces inpPieces)
-                then allPieces $ t : nub (inpTimeStampsFromPieces inpPieces)
-                else inpPieces
+              = let ts = inpTimeStamps inpPieces
+                in if t `notElem` ts
+                   then allPieces $ t : ts
+                   else inpPieces
+
+
+closestAny :: [TimeStamp] -> CDouble -> Direction -> Maybe TimeStamp
+closestAny ts time d = case d of
+    Forward  -> if (not . null) tsForward
+                then Just $ head tsForward
+                else Nothing
+    Backward -> if (not . null) tsBackward
+                then Just $ head tsBackward
+                else Nothing
+  where
+    st = sort ts
+    tsForward =  dropWhile (( <= time ) . getTimeStampDouble) st
+    tsBackward = reverse $ takeWhile ((  < time ) . getTimeStampDouble) st
+
+nav :: BSL.ByteString -> CDouble -> Direction
+    -> Either (Maybe TimeStamp) BSL.ByteString
+nav inpFileContents time d
+  = let scriptData = readScriptData inpFileContents
+        inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+    in if checkVersion inpFileContents scriptData == BSL.empty
+       then Left  $ closestAny (inpTimeStamps inpPieces) time d
+       else Right $ checkVersion inpFileContents scriptData

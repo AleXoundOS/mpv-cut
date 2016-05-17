@@ -10,7 +10,7 @@ libmpv-cut.so: MPV_Cut.hs lualibhelper.o
 	ghc $^ -o $@ -Wall -no-hs-main ${OPTIM} -shared -fPIC -dynamic -lHSrts-ghc7.10.3
 
 lualibhelper.o: lualibhelper.c MPV_Cut_stub.h
-	gcc $< -o $@ -c -Wall ${OPTIM} -I/usr/include/lua5.2 -I/usr/lib/ghc-7.10.3/include
+	gcc $< -o $@ -c -Wall -fPIC ${OPTIM} -I/usr/include/lua5.2 -I/usr/lib/ghc-7.10.3/include
 
 clean:
 	rm -f -v *.hi

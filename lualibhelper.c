@@ -35,7 +35,6 @@ int l_add(lua_State *L)
         side = number;
     else
         luaL_error(L, "side value exceeds limits");
-    printf("got side = %hhu\n", side);
 
     /** getting time in string format */
     const char *time = luaL_checkstring(L, 4);
@@ -43,11 +42,48 @@ int l_add(lua_State *L)
         luaL_error(L, "cannot parse time string");
 
     int retCode = h_add(fp, (HsPtr *) filename, side, (HsPtr *) time);
-    printf("hsAdd returned %d\n", retCode);
 
     lua_pushnumber(L, retCode);
 
     return 1;
+}
+
+int l_nav(lua_State *L)
+{
+    FILE *fp = tofile(L); ///< file must be 1st argument
+
+    /** getting input time in string format */
+    const char *inTime = luaL_checkstring(L, 2);
+    if (!inTime)
+        luaL_error(L, "cannot parse time string");
+
+    /** getting direction */
+    char direction;
+    int number = luaL_checkint(L, 3);
+
+    if (number >= 0 || number < (1 << (sizeof(direction)*8)))
+        direction = number;
+    else
+        luaL_error(L, "side value exceeds limits");
+
+    char side;
+    char *outTime;
+    int retCode = h_nav(fp, (HsPtr *) inTime, direction, &side, &outTime);
+
+    lua_pushnumber(L, retCode);
+    if (retCode == 0) {
+        if (side != 0) {
+            lua_pushnumber(L, side);
+            lua_pushstring(L, outTime);
+            return 3;
+        }
+        else {
+            lua_pushnil(L);
+            return 2;
+        }
+    }
+    else
+        return 1;
 }
 
 static void lib_enter(void) __attribute__((constructor));
@@ -69,6 +105,8 @@ int luaopen_lualibhelper(lua_State *L)
 {
     lua_pushcfunction(L, (int (*)(lua_State*)) l_add);
     lua_setglobal(L, "hsAdd");
+    lua_pushcfunction(L, (int (*)(lua_State*)) l_nav);
+    lua_setglobal(L, "hsNav");
 
     return 0;
 }
