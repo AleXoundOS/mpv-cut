@@ -105,7 +105,7 @@ h_add fp cMediaFilename char str = do
         maybeSide = readMaybe [char]
     if maybeSide == Nothing
         then do
-            return 1
+            return 2
         else do
             -- | fetching parameters for add
             mediaFilenameBind <- BS.packCString cMediaFilename
@@ -124,14 +124,18 @@ h_add fp cMediaFilename char str = do
             inpFileContentsStrict <- BS.hGetContents h2
             let inpFileContents = BSL.fromStrict inpFileContentsStrict
 
+            let returnWithClose code = do hClose h2
+                                          hClose h
+                                          return code
+
             -- processing and writing
             hSeek h AbsoluteSeek 0
-            BSL.hPutStr h
-              $ add inpFileContents mediaFileName (TimeStamp side time)
-
-            hClose h2
-            hClose h
-            return 0
+            case add inpFileContents mediaFileName (TimeStamp side time) of
+                Left bstr -> do BSL.hPutStr h bstr
+                                returnWithClose 0
+                Right bstrError -> do BSL.hPutStr h
+                                        $ BSL.append bstrError inpFileContents
+                                      returnWithClose 1
 
 #ifndef GHCI
 foreign export ccall h_nav
@@ -151,11 +155,13 @@ h_nav fp c_inTime c_d pSide pTime = do
     inTimeBind <- BS.packCString c_inTime
     let inTime = (unsafeReadDouble . BSL.fromStrict) inTimeBind
 
+    let returnWithClose code = do hClose h2
+                                  hClose h
+                                  return code
+
     if c_d `notElem` ['f', 'b']
         then do
-            hClose h2
-            hClose h
-            return 2
+            returnWithClose 2
         else do
             -- Direction
             let d = case c_d of
@@ -171,21 +177,15 @@ h_nav fp c_inTime c_d pSide pTime = do
                     -- write time pointer
                     timeCStr <- BS.useAsCString (BSL.toStrict time) return
                     poke pTime timeCStr
-                    hClose h2
-                    hClose h
-                    return 0
+                    returnWithClose 0
                 Left Nothing -> do
                     -- writing side pointer as '\0'
                     poke pSide '\0'
                     -- write time pointer as nullPtr
                     poke pTime nullPtr
-                    hClose h2
-                    hClose h
-                    return 0
+                    returnWithClose 0
                 Right bstr -> do BSL.hPutStr h (BSL.append bstr inpFileContents)
-                                 hClose h2
-                                 hClose h
-                                 return 1
+                                 returnWithClose 1
 
 nameFromFilename :: BSL.ByteString -> BSL.ByteString
 nameFromFilename filename
@@ -304,45 +304,21 @@ readScriptData inpFileContents
     afterPart precStr
       = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) inpFileContents
 
-checkVersion :: BSL.ByteString -> ScriptData -> BSL.ByteString
-checkVersion inpFileContents scriptData
-  = if inpFileContents /= BSL.empty
-    && (\(ScriptData (version, _, _, _)) -> version) scriptData == BSL.empty
-    then BSL.concat [ "# attempt to use script with parser of version: "
-                    , scriptVersion , "\n"
-                    ]
-    else BSL.empty
+checkScript :: ScriptData -> BSL.ByteString
+checkScript (ScriptData (version, extension, sourcename, _))
+  | version /= scriptVersion
+    = BSL.concat [ "# attempt to use script with parser of version: "
+                 , scriptVersion , "\n"
+                 ]
+  | extension == BSL.empty = "# couldn't fetch OUT_EXT\n"
+  | sourcename == BSL.empty = "# couldn't fetch SOURCE_NAME\n"
+  | otherwise = BSL.empty
 
 inpTimeStamps :: [Piece] -> [TimeStamp]
 inpTimeStamps ps
   = let notSE = filter (\(TimeStamp side _) -> side `notElem` [S,E])
         inpTimeStampsFromPieces = notSE . piecesToTs
     in nub (inpTimeStampsFromPieces ps)
-
--- add TimeStamp (with composing and adding new Pieces)
-add :: BSL.ByteString -> BSL.ByteString -> TimeStamp -> BSL.ByteString
-add inpFileContents mediaFileName t =
-    let scriptData = readScriptData inpFileContents
-    in if inpFileContents /= BSL.empty
-       && (\(ScriptData (version, _, _, _)) -> version) scriptData == BSL.empty
-       then BSL.concat [ "# attempt to use script with parser of version: "
-                       , scriptVersion , "\n"
-                       , inpFileContents
-                       ]
-       else substituteInTemplate scriptTemplateFile
-                                 ( ScriptData ( scriptVersion
-                                              , outFileExtension
-                                              , nameFromFilename mediaFileName
-                                              , pieces scriptData
-                                              )
-                                 )
-         where
-            pieces (ScriptData (_, _, _, inpPieces))
-              = let ts = inpTimeStamps inpPieces
-                in if t `notElem` ts
-                   then allPieces $ t : ts
-                   else inpPieces
-
 
 closestAny :: [TimeStamp] -> CDouble -> Direction -> Maybe TimeStamp
 closestAny ts time d = case d of
@@ -357,11 +333,33 @@ closestAny ts time d = case d of
     tsForward =  dropWhile (( <= time ) . getTimeStampDouble) st
     tsBackward = reverse $ takeWhile ((  < time ) . getTimeStampDouble) st
 
+-- add TimeStamp (with composing and adding new Pieces)
+add :: BSL.ByteString -> BSL.ByteString -> TimeStamp
+    -> Either BSL.ByteString BSL.ByteString
+add inpFileContents mediaFileName t =
+    let scriptData = readScriptData inpFileContents
+    in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
+       then Right $ checkScript scriptData
+       else Left
+         $ substituteInTemplate scriptTemplateFile
+                                ( ScriptData ( scriptVersion
+                                             , outFileExtension
+                                             , nameFromFilename mediaFileName
+                                             , pieces scriptData
+                                             )
+                                )
+         where
+            pieces (ScriptData (_, _, _, inpPieces))
+              = let ts = inpTimeStamps inpPieces
+                in if t `notElem` ts
+                   then allPieces $ t : ts
+                   else inpPieces
+
 nav :: BSL.ByteString -> CDouble -> Direction
     -> Either (Maybe TimeStamp) BSL.ByteString
 nav inpFileContents time d
   = let scriptData = readScriptData inpFileContents
         inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
-    in if checkVersion inpFileContents scriptData == BSL.empty
-       then Left  $ closestAny (inpTimeStamps inpPieces) time d
-       else Right $ checkVersion inpFileContents scriptData
+    in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
+       then Right $ checkScript scriptData
+       else Left  $ closestAny (inpTimeStamps inpPieces) time d
