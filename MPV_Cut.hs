@@ -133,9 +133,12 @@ h_add fp cMediaFilename char str = do
             case add inpFileContents mediaFileName (TimeStamp side time) of
                 Left bstr -> do BSL.hPutStr h bstr
                                 returnWithClose 0
-                Right bstrError -> do BSL.hPutStr h
-                                        $ BSL.append bstrError inpFileContents
-                                      returnWithClose 1
+                Right bstrError -> if bstrError == "already added"
+                                   then do returnWithClose 3
+                                   else do BSL.hPutStr h
+                                             $ BSL.append bstrError
+                                                          inpFileContents
+                                           returnWithClose 1
 
 #ifndef GHCI
 foreign export ccall h_nav
@@ -316,7 +319,7 @@ checkScript (ScriptData (version, extension, sourcename, _))
 
 inpTimeStamps :: [Piece] -> [TimeStamp]
 inpTimeStamps ps
-  = let notSE = filter (\(TimeStamp side _) -> side `notElem` [S,E])
+  = let notSE = filter (\(TimeStamp side _) -> side `elem` [A,B,X])
         inpTimeStampsFromPieces = notSE . piecesToTs
     in nub (inpTimeStampsFromPieces ps)
 
@@ -338,23 +341,23 @@ add :: BSL.ByteString -> BSL.ByteString -> TimeStamp
     -> Either BSL.ByteString BSL.ByteString
 add inpFileContents mediaFileName t =
     let scriptData = readScriptData inpFileContents
+        inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        ts = inpTimeStamps inpPieces
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
-       else Left
-         $ substituteInTemplate scriptTemplateFile
-                                ( ScriptData ( scriptVersion
-                                             , outFileExtension
-                                             , nameFromFilename mediaFileName
-                                             , pieces scriptData
-                                             )
-                                )
-         where
-            pieces (ScriptData (_, _, _, inpPieces))
-              = let ts = inpTimeStamps inpPieces
-                in if t `notElem` ts
-                   then allPieces $ t : ts
-                   else inpPieces
+       else if t `elem` ts
+            then Right "already added"
+            else Left
+              $ substituteInTemplate scriptTemplateFile
+                                     ( ScriptData ( scriptVersion
+                                                  , outFileExtension
+                                                  , nameFromFilename
+                                                    mediaFileName
+                                                  , allPieces $ t : ts
+                                                  )
+                                     )
 
+-- navigate in existing script forward or backward from given time
 nav :: BSL.ByteString -> CDouble -> Direction
     -> Either (Maybe TimeStamp) BSL.ByteString
 nav inpFileContents time d
