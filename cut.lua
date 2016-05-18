@@ -40,7 +40,7 @@ function add(side)
     elseif retCode == 1 then
         mp.osd_message("cannot parse existing script file")
     else
-        mp.osd_message( "unknown error adding " .. side .. ":" .. timepos ..
+        mp.osd_message( "unknown error in adding " .. side .. ":" .. timepos ..
                         " for " .. mp.get_property("filename") )
     end
 end
@@ -67,6 +67,21 @@ function nav(direction)
     end
 end
 
+function del()
+    init()
+    local timepos = mp.get_property("time-pos")
+    retCode = hsDel(f, timepos)
+
+    if retCode == 0 then
+        mp.osd_message("delete " .. timepos)
+    elseif retCode == 3 then
+        mp.osd_message(timepos .. " does not exist")
+    else
+        mp.osd_message( "unknown error in deleting " .. timepos ..
+                        " for " .. mp.get_property("filename") )
+    end
+end
+
 -- add A--> timestamp
 mp.add_forced_key_binding("a", function() add("A") end)
 
@@ -81,3 +96,6 @@ mp.add_forced_key_binding("Ctrl+]", function() nav("forward") end)
 
 -- navigate to previous timestamp
 mp.add_forced_key_binding("Ctrl+[", function() nav("backward") end)
+
+-- delete existing timestamp
+mp.add_forced_key_binding("Ctrl+d", function() del() end)

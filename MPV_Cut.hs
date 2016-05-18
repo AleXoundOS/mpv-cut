@@ -21,7 +21,7 @@ import System.Posix.IO (fdToHandle, dup)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.Char8 as BS
   (ByteString, useAsCString, packCString, cons, hGetContents)
-import Data.List ((\\), find, sort, nub)
+import Data.List ((\\), find, sort, nub, delete)
 import Text.Read (readMaybe)
 import Data.FileEmbed (embedFile)
 import Data.ByteString.Lazy.Search as BSLS (replace, breakAfter)
@@ -100,9 +100,9 @@ fpToHandle fp = do
 foreign export ccall h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
 #endif
 h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
-h_add fp cMediaFilename char str = do
+h_add fp cMediaFilename c_side c_time = do
     let maybeSide :: Maybe Side
-        maybeSide = readMaybe [char]
+        maybeSide = readMaybe [c_side]
     if maybeSide == Nothing
         then do
             return 2
@@ -113,7 +113,7 @@ h_add fp cMediaFilename char str = do
 
             let side = (\(Just x) -> x) maybeSide
 
-            timeBind <- BS.packCString str
+            timeBind <- BS.packCString c_time
             let time = BSL.fromStrict timeBind
 
             h <- fpToHandle fp
@@ -189,6 +189,39 @@ h_nav fp c_inTime c_d pSide pTime = do
                     returnWithClose 0
                 Right bstr -> do BSL.hPutStr h (BSL.append bstr inpFileContents)
                                  returnWithClose 1
+
+#ifndef GHCI
+foreign export ccall h_del :: Ptr CFile -> CString -> IO CInt
+#endif
+h_del :: Ptr CFile -> CString -> IO CInt
+h_del fp c_time = do
+    h <- fpToHandle fp
+
+    -- read using duplicate Handle - avoid semi-closed Handle afterwards
+    h2 <- hDuplicate h
+    hSeek h2 AbsoluteSeek 0
+    inpFileContentsStrict <- BS.hGetContents h2
+    let inpFileContents = BSL.fromStrict inpFileContentsStrict
+
+    timeBind <- BS.packCString c_time
+    let time = BSL.fromStrict timeBind
+
+    let returnWithClose code = do hClose h2
+                                  hClose h
+                                  return code
+
+    -- processing and writing
+    hSeek h AbsoluteSeek 0
+    case del inpFileContents time of
+        Left bstr -> do BSL.hPutStr h bstr
+                        -- truncating file (so that there is no garbage at end)
+                        hSetFileSize h $ fromIntegral (BSL.length bstr)
+                        returnWithClose 0
+        Right bstrError -> if bstrError == "does not exist"
+                           then do returnWithClose 3
+                           else do BSL.hPutStr h
+                                     $ BSL.append bstrError inpFileContents
+                                   returnWithClose 1
 
 nameFromFilename :: BSL.ByteString -> BSL.ByteString
 nameFromFilename filename
@@ -366,3 +399,19 @@ nav inpFileContents time d
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
        else Left  $ closestAny (inpTimeStamps inpPieces) time d
+
+-- delete timestamp at specified time
+del :: BSL.ByteString -> BSL.ByteString -> Either BSL.ByteString BSL.ByteString
+del inpFileContents time
+  = let scriptData = readScriptData inpFileContents
+        inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        ts = inpTimeStamps inpPieces
+        t = TimeStamp X time -- here we assume that equality ignores Side
+        newScriptData (ScriptData (version, extension, sourcename, _))
+          = ScriptData (version, extension, sourcename, allPieces $ delete t ts)
+    in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
+       then Right $ checkScript scriptData
+       else if t `notElem` ts
+            then Right "does not exist"
+            else Left $ substituteInTemplate scriptTemplateFile
+                                             (newScriptData scriptData)

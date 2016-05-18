@@ -86,6 +86,22 @@ int l_nav(lua_State *L)
         return 1;
 }
 
+int l_del(lua_State *L)
+{
+    FILE *fp = tofile(L); ///< file must be 1st argument
+
+    /** getting input time in string format */
+    const char *inTime = luaL_checkstring(L, 2);
+    if (!inTime)
+        luaL_error(L, "cannot parse time string");
+
+    int retCode = h_del(fp, (HsPtr *) inTime);
+
+    lua_pushnumber(L, retCode);
+
+    return 1;
+}
+
 static void lib_enter(void) __attribute__((constructor));
 static void lib_enter(void)
 {
@@ -107,6 +123,8 @@ int luaopen_lualibhelper(lua_State *L)
     lua_setglobal(L, "hsAdd");
     lua_pushcfunction(L, (int (*)(lua_State*)) l_nav);
     lua_setglobal(L, "hsNav");
+    lua_pushcfunction(L, (int (*)(lua_State*)) l_del);
+    lua_setglobal(L, "hsDel");
 
     return 0;
 }
