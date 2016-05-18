@@ -156,7 +156,7 @@ h_nav fp c_inTime c_d pSide pTime = do
 
     -- Time
     inTimeBind <- BS.packCString c_inTime
-    let inTime = (unsafeReadDouble . BSL.fromStrict) inTimeBind
+    let inTime = BSL.fromStrict inTimeBind
 
     let returnWithClose code = do hClose h2
                                   hClose h
@@ -391,14 +391,15 @@ add inpFileContents mediaFileName t =
                                      )
 
 -- navigate in existing script forward or backward from given time
-nav :: BSL.ByteString -> CDouble -> Direction
+nav :: BSL.ByteString -> BSL.ByteString -> Direction
     -> Either (Maybe TimeStamp) BSL.ByteString
 nav inpFileContents time d
   = let scriptData = readScriptData inpFileContents
         inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        timeDouble = unsafeReadDouble time
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
-       else Left  $ closestAny (inpTimeStamps inpPieces) time d
+       else Left  $ closestAny (inpTimeStamps inpPieces) timeDouble d
 
 -- delete timestamp at specified time
 del :: BSL.ByteString -> BSL.ByteString -> Either BSL.ByteString BSL.ByteString
