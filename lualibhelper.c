@@ -29,7 +29,7 @@ int l_add(lua_State *L)
         luaL_error(L, "cannot parse time string");
 
     /** getting side */
-    char side;
+    char side = '\0';
     int number = luaL_checkint(L, 3);
     if (number >= 0 || number < (1 << (sizeof(side)*8)))
         side = number;
@@ -66,16 +66,18 @@ int l_nav(lua_State *L)
     else
         luaL_error(L, "side value exceeds limits");
 
-    char side;
-    char *outTime;
-    int retCode = h_nav(fp, (HsPtr *) inTime, direction, &side, &outTime);
+    char pos = '\0';
+    char side = '\0';
+    char *outTime = NULL;
+    int retCode = h_nav(fp, (HsPtr *) inTime, direction, &pos, &side, &outTime);
 
     lua_pushnumber(L, retCode);
     if (retCode == 0) {
-        if (side != 0) {
+        if (pos != '\0') {
+            lua_pushnumber(L, pos);
             lua_pushnumber(L, side);
             lua_pushstring(L, outTime);
-            return 3;
+            return 4;
         }
         else {
             lua_pushnil(L);

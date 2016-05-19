@@ -47,17 +47,29 @@ end
 
 function nav(direction)
     init()
-    retCode, s, t = hsNav( f, mp.get_property("time-pos")
-                            , string.byte(direction, 1) )
+    local timepos = mp.get_property("time-pos")
+    -- return code, position (f_irst, o_nly, l_ast, n_one of these), side, time
+    local retCode, p, s, t = hsNav(f, timepos, string.byte(direction, 1))
     print(retCode)
+    print(p)
     print(s)
     print(t)
     if retCode == 0 then
-        if s ~= nil then
-            mp.osd_message(string.char(s) .. ": " .. t)
+        if p ~= nil then
+            if p == 'o' then
+                strPos = " (only)"
+            elseif p == 'f' then
+                strPos = " (first)"
+            elseif p == 'l' then
+                -- the supplied time is the only timestamp in script
+                strPos = " (last)"
+            else
+                strPos = ""
+            end
+            mp.osd_message(string.char(s) .. ": " .. t .. strPos)
             mp.set_property("time-pos", t)
         else
-            mp.osd_message("no " .. direction .. " timestamp")
+            mp.osd_message(timepos .. ": no " .. direction .. " timestamps")
         end
     elseif retCode == 1 then
         mp.osd_message("cannot parse existing script file")
@@ -70,7 +82,7 @@ end
 function del()
     init()
     local timepos = mp.get_property("time-pos")
-    retCode = hsDel(f, timepos)
+    local retCode = hsDel(f, timepos)
 
     if retCode == 0 then
         mp.osd_message("delete " .. timepos)

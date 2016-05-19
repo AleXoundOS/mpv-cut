@@ -79,6 +79,9 @@ newtype ScriptData = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString
 data Direction = Forward | Backward
   deriving (Eq, Show)
 
+data Position = First | Only | Last | Normal
+  deriving (Show)
+
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
 
 unsafeReadDouble :: BSL.ByteString -> CDouble
@@ -142,10 +145,12 @@ h_add fp cMediaFilename c_side c_time = do
 
 #ifndef GHCI
 foreign export ccall h_nav
-  :: Ptr CFile -> CString -> Char -> Ptr Char -> Ptr CString -> IO CInt
+  :: Ptr CFile -> CString -> Char -> Ptr Char -> Ptr Char -> Ptr CString
+  -> IO CInt
 #endif
-h_nav :: Ptr CFile -> CString -> Char -> Ptr Char -> Ptr CString -> IO CInt
-h_nav fp c_inTime c_d pSide pTime = do
+h_nav :: Ptr CFile -> CString -> Char -> Ptr Char -> Ptr Char -> Ptr CString
+      -> IO CInt
+h_nav fp c_inTime c_d pPos pSide pTime = do
     h <- fpToHandle fp
 
     -- file read
@@ -173,20 +178,28 @@ h_nav fp c_inTime c_d pSide pTime = do
                         _   -> error "unexpected direction"
 
             hSeek h AbsoluteSeek 0
-            case nav inpFileContents inTime d of
-                Left (Just (TimeStamp side time)) -> do
-                    -- writing side by pointer
+            case myTrace $ nav inpFileContents inTime d of
+                Left (Just (TimeStamp side time, position)) -> do
+                    -- write position by pointer
+                    poke pPos $ myTrace $ myToLower $ ((show position) !! 0)
+                    -- write side by pointer
                     poke pSide $ (show side) !! 0
                     -- write time pointer
                     timeCStr <- BS.useAsCString (BSL.toStrict time) return
                     poke pTime timeCStr
+
                     returnWithClose 0
+
                 Left Nothing -> do
-                    -- writing side pointer as '\0'
+                    -- write position by pointer as '\0'
+                    poke pPos '\0'
+                    -- write side pointer as '\0'
                     poke pSide '\0'
                     -- write time pointer as nullPtr
                     poke pTime nullPtr
+
                     returnWithClose 0
+
                 Right bstr -> do BSL.hPutStr h (BSL.append bstr inpFileContents)
                                  returnWithClose 1
 
@@ -210,11 +223,11 @@ h_del fp c_time = do
                                   hClose h
                                   return code
 
-    -- processing and writing
+    -- process and write
     hSeek h AbsoluteSeek 0
     case del inpFileContents time of
         Left bstr -> do BSL.hPutStr h bstr
-                        -- truncating file (so that there is no garbage at end)
+                        -- truncate file (so that there is no garbage at end)
                         hSetFileSize h $ fromIntegral (BSL.length bstr)
                         returnWithClose 0
         Right bstrError -> if bstrError == "does not exist"
@@ -222,6 +235,9 @@ h_del fp c_time = do
                            else do BSL.hPutStr h
                                      $ BSL.append bstrError inpFileContents
                                    returnWithClose 1
+
+myToLower :: Char -> Char
+myToLower c = toEnum (fromEnum c + 32)
 
 nameFromFilename :: BSL.ByteString -> BSL.ByteString
 nameFromFilename filename
@@ -392,14 +408,31 @@ add inpFileContents mediaFileName t =
 
 -- navigate in existing script forward or backward from given time
 nav :: BSL.ByteString -> BSL.ByteString -> Direction
-    -> Either (Maybe TimeStamp) BSL.ByteString
+    -> Either (Maybe (TimeStamp, Position)) BSL.ByteString
 nav inpFileContents time d
   = let scriptData = readScriptData inpFileContents
         inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        ts = inpTimeStamps inpPieces
         timeDouble = unsafeReadDouble time
+    -- check if there are parsing errors of existing script (if supplied)
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
+       -- return parsing error message string
        then Right $ checkScript scriptData
-       else Left  $ closestAny (inpTimeStamps inpPieces) timeDouble d
+       -- proceed next as script is parsed successfully
+       else Left
+         -- first find closest TimeStamp except identical bordered to supplied
+         -- if no closest, find among all existing TimeStamps including bordered
+         $ let maybeT = case closestAny ts timeDouble d of
+                            Just t -> Just t
+                            Nothing -> find (\t -> getTimeStampStr t == time) ts
+           in case maybeT of
+                          -- determine position of existing TimeStamp
+                Just t -> let p | length ts == 1 = Only
+                                | t == (head ts) = First
+                                | t == (last ts) = Last
+                                | otherwise      = Normal
+                          in Just (t, p)
+                Nothing -> Nothing
 
 -- delete timestamp at specified time
 del :: BSL.ByteString -> BSL.ByteString -> Either BSL.ByteString BSL.ByteString
