@@ -438,7 +438,7 @@ nav :: BSL.ByteString -> BSL.ByteString -> Direction
 nav inpFileContents time d
   = let scriptData = readScriptData inpFileContents
         inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
-        ts = inpTimeStamps inpPieces
+        ts = sort $ inpTimeStamps inpPieces
         timeDouble = unsafeReadDouble time
     -- check if there are parsing errors of existing script (if supplied)
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
