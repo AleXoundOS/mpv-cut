@@ -258,29 +258,55 @@ closest s d ts
 adoptees :: [TimeStamp] -> [TimeStamp] -> [Piece]
 adoptees remaining ts = foldr f [] remaining
   where
-    f tA@(TimeStamp A s) acc = case (closest B (unsafeReadDouble s) ts) of
-        Just tB -> Piece (tA, tB) : acc
-        Nothing -> acc
-    f tB@(TimeStamp B s) acc = case (closest A (unsafeReadDouble s) ts) of
-        Just tA -> Piece (tA, tB) : acc
-        Nothing -> acc
+    f tA@(TimeStamp A st) acc = fm tA (closest B (unsafeReadDouble st) ts) acc
+    f tB@(TimeStamp B st) acc = fm tB (closest A (unsafeReadDouble st) ts) acc
+    f tX@(TimeStamp X st) acc
+      = foldr (fm tX) acc [ closest B (unsafeReadDouble st) ts
+                          , closest A (unsafeReadDouble st) ts
+                          ]
     f _ _ = error "unexpected side in adoptees"
+    -- from maybe x y to (Piece (x/y, y/x) : acc) or acc
+    fm x (Just y@(TimeStamp B _)) acc = Piece (x, y) : acc
+    fm x (Just y@(TimeStamp A _)) acc = Piece (y, x) : acc
+    fm _ Nothing acc = acc
+    fm _ (Just _) _ = error "unexpected side in adoptees 2"
 
-borderTheSide :: TimeStamp -> Piece
-borderTheSide t | getTimeStampSide t == A = Piece (t, TimeStamp E "null")
-                | getTimeStampSide t == B = Piece (TimeStamp S "null", t)
-                | otherwise = error "unexpected side in borderTheSide"
+-- compose S-B, A-E
+borderTimeStamps :: [TimeStamp] -> [Piece]
+borderTimeStamps (t@(TimeStamp A _):ts)
+  = Piece (t, TimeStamp E "null") : borderTimeStamps ts
+borderTimeStamps (t@(TimeStamp B _):ts)
+  = Piece (TimeStamp S "null", t) : borderTimeStamps ts
+borderTimeStamps (TimeStamp _ _:_) = error "unexpected side in borderTimeStamp"
+borderTimeStamps [] = []
+
+-- compose S-X and X-E Pieces if X is first or last
+borderEdgeTs :: [TimeStamp] -> [Piece]
+borderEdgeTs [] = []
+borderEdgeTs ts = checkAndBorderE (last ts) $ checkAndBorderS (head ts) []
+  where
+    checkAndBorderS :: TimeStamp -> [Piece] -> [Piece]
+    checkAndBorderS t@(TimeStamp X _) = (:) (Piece (TimeStamp S "null", t))
+    checkAndBorderS _ = id
+    checkAndBorderE :: TimeStamp -> [Piece] -> [Piece]
+    checkAndBorderE t@(TimeStamp X _) = (:) (Piece (t, TimeStamp E "null"))
+    checkAndBorderE _ = id
 
 -- straight A-B from bottom to top level ++ closest A/B ++ bordered
 allPieces :: [TimeStamp] -> [Piece]
-allPieces ts =
-    let sts = sort ts
+allPieces ts
+  = let sts = sort ts
         lNatives = nativeCitizens sts
         lAdoptees = adoptees (sts \\ piecesToTs lNatives) sts
-        -- remaining = foldl (\\) ts (map piecesToTs [lNatives, lAdoptees])
-        remaining = foldr ((flip (\\)) . piecesToTs) sts [lNatives, lAdoptees]
-        lBordered = map borderTheSide remaining
-    in sort $ lNatives ++ lAdoptees ++ lBordered
+        lBorderedX = borderEdgeTs sts
+        remaining = foldl (\\) ts (map piecesToTs [ lNatives
+                                                  , lAdoptees
+                                                  , lBorderedX ])
+        -- remaining = foldr ((flip (\\)) . piecesToTs) sts [ lNatives
+                                                         -- , lAdoptees
+                                                         -- , lBorderedX ]
+        lBordered = borderTimeStamps remaining
+    in sort $ lNatives ++ lAdoptees ++ lBordered ++ lBorderedX
 
 piecesToTs :: [Piece] -> [TimeStamp]
 piecesToTs (Piece (a,b) : xs) = a : b : piecesToTs xs
