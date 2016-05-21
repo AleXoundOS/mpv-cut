@@ -11,7 +11,7 @@ function src_file {
     echo "$SOURCE_NAME.$OUT_EXT"
 }
 
-FFMPEG_CMD="ffmpeg -i \"$(src_file)\""
+FFMPEG_CMD="ffmpeg "
 
 i=0
 for piece in \
@@ -20,20 +20,20 @@ for piece in \
 do IFS=","; set -- $piece
     A=$(echo $1 | cut -d':' -f2)
     if [ $A != "null" ]; then
-        A="-ss $A"
+        strA="-ss $A"
     else
-        A=""
+        strA=""
     fi
     B=$(echo $2 | cut -d':' -f2)
     if [ $B != "null" ]; then
-        B="-to $B"
+        strB="-t $(echo $B-$A | bc)"
     else
-        B=""
+        strB=""
     fi
     IFS=" "
     
     printf -v NUMBER_STR '%02d' "$i"
-    FFMPEG_CMD="$FFMPEG_CMD -c copy $A $B \"$(dst_file $NUMBER_STR)\""
+    FFMPEG_CMD="$FFMPEG_CMD $strA $strB -i \"$(src_file)\" -c copy -map $NUMBER_STR \"$(dst_file $NUMBER_STR)\""
     ((i++))
 done
 
