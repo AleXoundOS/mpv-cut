@@ -4,3 +4,4 @@
 *_stub.h
 hslua
 test_file
+*.dyn_*
