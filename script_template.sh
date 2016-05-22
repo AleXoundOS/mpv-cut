@@ -1,14 +1,12 @@
 #!/bin/sh
 
 VERSION={{VERSION}}
+IN_FILENAME={{IN_FILENAME}}
+IN_NAME={{IN_NAME}}
 OUT_EXT={{EXTENSION}}
-SOURCE_NAME={{SOURCE}}
 
-function dst_file {
-    echo "$SOURCE_NAME.$1.$OUT_EXT"
-}
-function src_file {
-    echo "$SOURCE_NAME.$OUT_EXT"
+function out_file {
+    echo "$IN_NAME.$1.$OUT_EXT"
 }
 
 FFMPEG_CMD="ffmpeg "
@@ -33,7 +31,8 @@ do IFS=","; set -- $piece
     IFS=" "
     
     printf -v NUMBER_STR '%02d' "$i"
-    FFMPEG_CMD="$FFMPEG_CMD $strA $strB -i \"$(src_file)\" -c copy -map $NUMBER_STR \"$(dst_file $NUMBER_STR)\""
+    FFMPEG_CMD="$FFMPEG_CMD $strA $strB -i \"$IN_FILENAME\" -c copy"
+    FFMPEG_CMD="$FFMPEG_CMD -map $NUMBER_STR \"$(out_file $NUMBER_STR)\""
     ((i++))
 done
 

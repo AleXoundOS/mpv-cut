@@ -19,7 +19,7 @@ static FILE *tofile (lua_State *L) {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-int l_add(lua_State *L)
+int l_cfg(lua_State *L)
 {
     FILE *fp = tofile(L); ///< file must be 1st argument
 
@@ -28,20 +28,36 @@ int l_add(lua_State *L)
     if (!filename)
         luaL_error(L, "cannot parse time string");
 
+    /** getting requested extension */
+    const char *extension = luaL_checkstring(L, 3);
+    if (!extension)
+        luaL_error(L, "cannot parse time string");
+
+    int retCode = h_cfg(fp, (HsPtr *) filename, (HsPtr *) extension);
+
+    lua_pushnumber(L, retCode);
+
+    return 1;
+}
+
+int l_add(lua_State *L)
+{
+    FILE *fp = tofile(L); ///< file must be 1st argument
+
     /** getting side */
     char side = '\0';
-    int number = luaL_checkint(L, 3);
+    int number = luaL_checkint(L, 2);
     if (number >= 0 || number < (1 << (sizeof(side)*8)))
         side = number;
     else
         luaL_error(L, "side value exceeds limits");
 
     /** getting time in string format */
-    const char *time = luaL_checkstring(L, 4);
+    const char *time = luaL_checkstring(L, 3);
     if (!time)
         luaL_error(L, "cannot parse time string");
 
-    int retCode = h_add(fp, (HsPtr *) filename, side, (HsPtr *) time);
+    int retCode = h_add(fp, side, (HsPtr *) time);
 
     lua_pushnumber(L, retCode);
 
@@ -121,6 +137,8 @@ static void lib_exit(void)
 
 int luaopen_lualibhelper(lua_State *L)
 {
+    lua_pushcfunction(L, (int (*)(lua_State*)) l_cfg);
+    lua_setglobal(L, "hsCfg");
     lua_pushcfunction(L, (int (*)(lua_State*)) l_add);
     lua_setglobal(L, "hsAdd");
     lua_pushcfunction(L, (int (*)(lua_State*)) l_nav);

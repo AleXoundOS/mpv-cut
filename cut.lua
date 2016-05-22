@@ -10,11 +10,27 @@ end
 
 function init(mode)
     if f == nil then
+        if hslibinit == nil then
+            -- load and initialize library
+            local fn = debug.getinfo(1).source:match("@?(.*/)") .. "libmpv-cut.so"
+            hslibinit = package.loadlib(fn, "luaopen_lualibhelper")
+            hslibinit()
+        end
+
         -- first try to open existing file
         f = io.open(mp.get_property("path") .. ".sh", "r+")
         if f == nil and mode ~= "ro" then
             -- create new file
             f = io.open(mp.get_property("path") .. ".sh", "w+")
+
+            -- choose extension depending on media type: video or audio only
+            local ext = "mkv"
+            if mp.get_property("video-format") == nil then
+                ext = ""
+            end
+
+            -- write config (filename, extension) for the current playback file
+            hsCfg(f, mp.get_property("filename"), ext)
         end
 
         if f == nil then
@@ -23,20 +39,12 @@ function init(mode)
 
         mp.register_event("shutdown", shutdown)
     end
-
-    if hslibinit == nil then
-        -- load and initialize library
-        local fn = debug.getinfo(1).source:match("@?(.*/)") .. "libmpv-cut.so"
-        hslibinit = package.loadlib(fn, "luaopen_lualibhelper")
-        hslibinit()
-    end
 end
 
 function add(side)
     init()
     local timepos = mp.get_property("time-pos")
-    local retCode = hsAdd( f, mp.get_property("filename")
-                         , string.byte(side, 1), timepos )
+    local retCode = hsAdd(f, string.byte(side, 1), timepos)
     if retCode == 0 then
         mp.osd_message("add " .. side .. ":" .. timepos)
     elseif retCode == 3 then
@@ -51,7 +59,7 @@ end
 
 function nav(direction)
     if init("ro") == -1 then
-        mp.osd_message("no script exists for this file")
+        mp.osd_message("script doesn't exist for this file")
         return
     end
     local timepos = mp.get_property("time-pos")
@@ -109,12 +117,14 @@ mp.add_forced_key_binding("b", function() add("B") end)
 
 -- add -->X<-- timestamp
 mp.add_forced_key_binding("Ctrl+x", function() add("X") end)
+mp.add_forced_key_binding('0x18', function() add("X") end) -- Ctrl+x for console
 
 -- navigate to next timestamp
-mp.add_forced_key_binding("Ctrl+]", function() nav("forward") end)
+mp.add_forced_key_binding("\'", function() nav("forward") end)
 
 -- navigate to previous timestamp
-mp.add_forced_key_binding("Ctrl+[", function() nav("backward") end)
+mp.add_forced_key_binding(";", function() nav("backward") end)
 
 -- delete existing timestamp
 mp.add_forced_key_binding("Ctrl+d", function() del() end)
+mp.add_forced_key_binding('0x4', function() del() end) -- Ctrl+d for console

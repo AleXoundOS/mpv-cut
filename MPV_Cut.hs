@@ -6,7 +6,7 @@
 -- Copyright   : (c) 2016 Alexander Tomokhov
 --
 -- License     : GPL3
--- Maintainer  : alexoundos@ya.ru
+-- Maintainer  : alexoundos@google.com
 -- Stability   : experimental
 -- Portability : GHC
 
@@ -62,18 +62,17 @@ getTimeStampDouble (TimeStamp _ str) = unsafeReadDouble str
 scriptVersion :: BSL.ByteString
 scriptVersion = "0.1" -- bash script format version
 
-scriptTemplateFile :: BSL.ByteString
-scriptTemplateFile = BSL.fromStrict $(embedFile "script_template.sh")
-
-outFileExtension :: BSL.ByteString
-outFileExtension = "mkv"
+scriptTemplate :: BSL.ByteString
+scriptTemplate = BSL.fromStrict $(embedFile "script_template.sh")
 
 -- this is a Piece of stream, i.e. A-B, A-X, A-E, S-B, S-X, S-E
 newtype Piece = Piece (TimeStamp,TimeStamp)
   deriving (Eq, Ord, Show)
 
-newtype ScriptData = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString
-                                , [Piece] )
+newtype ScriptData
+--               version         input filename  input name     output extension
+  = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString, BSL.ByteString
+               , [Piece] )
   deriving (Eq, Ord, Show)
 
 data Direction = Forward | Backward
@@ -100,10 +99,39 @@ fpToHandle fp = do
     return handle
 
 #ifndef GHCI
-foreign export ccall h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
+foreign export ccall h_cfg :: Ptr CFile -> CString -> CString -> IO CInt
 #endif
-h_add :: Ptr CFile -> CString -> Char -> CString -> IO CInt
-h_add fp cMediaFilename c_side c_time = do
+-- write configuration (version, filename, name, extension)
+h_cfg :: Ptr CFile -> CString -> CString -> IO CInt
+h_cfg fp cMediaFilename cExtension = do
+    h <- fpToHandle fp
+
+    mediaFilenameBind <- BS.packCString cMediaFilename
+    let mediaFileName = BSL.fromStrict mediaFilenameBind
+
+    extensionBind <- BS.packCString cExtension
+    let realExtension = let extension = BSL.fromStrict extensionBind
+                        in if extension /= BSL.empty
+                           -- use given extension
+                           then extension
+                           -- extract it from input filename, keep original
+                           else extFromFilename mediaFileName
+    -- writing all variables in script but with empty Pieces
+    BSL.hPutStr h $ substituteInTemplate (ScriptData ( scriptVersion
+                                                     , mediaFileName
+                                                     , nameFromFilename
+                                                       mediaFileName
+                                                     , realExtension
+                                                     , [] ))
+    hClose h
+    return 0
+
+#ifndef GHCI
+foreign export ccall h_add :: Ptr CFile -> Char -> CString -> IO CInt
+#endif
+-- add timestamp
+h_add :: Ptr CFile -> Char -> CString -> IO CInt
+h_add fp c_side c_time = do
     let maybeSide :: Maybe Side
         maybeSide = readMaybe [c_side]
     if maybeSide == Nothing
@@ -111,9 +139,6 @@ h_add fp cMediaFilename c_side c_time = do
             return 2
         else do
             -- | fetching parameters for add
-            mediaFilenameBind <- BS.packCString cMediaFilename
-            let mediaFileName = BSL.fromStrict mediaFilenameBind
-
             let side = (\(Just x) -> x) maybeSide
 
             timeBind <- BS.packCString c_time
@@ -133,7 +158,7 @@ h_add fp cMediaFilename c_side c_time = do
 
             -- processing and writing
             hSeek h AbsoluteSeek 0
-            case add inpFileContents mediaFileName (TimeStamp side time) of
+            case add inpFileContents (TimeStamp side time) of
                 Left bstr -> do BSL.hPutStr h bstr
                                 returnWithClose 0
                 Right bstrError -> if bstrError == "already added"
@@ -178,10 +203,10 @@ h_nav fp c_inTime c_d pPos pSide pTime = do
                         _   -> error "unexpected direction"
 
             hSeek h AbsoluteSeek 0
-            case myTrace $ nav inpFileContents inTime d of
+            case nav inpFileContents inTime d of
                 Left (Just (TimeStamp side time, position)) -> do
                     -- write position by pointer
-                    poke pPos $ myTrace $ myToLower $ ((show position) !! 0)
+                    poke pPos $ myToLower $ ((show position) !! 0)
                     -- write side by pointer
                     poke pSide $ (show side) !! 0
                     -- write time pointer
@@ -242,6 +267,15 @@ myToLower c = toEnum (fromEnum c + 32)
 nameFromFilename :: BSL.ByteString -> BSL.ByteString
 nameFromFilename filename
   = BSL.reverse $ BSL.drop 1 $ BSL.dropWhile (/= '.') $ (BSL.reverse filename)
+
+extFromFilename :: BSL.ByteString -> BSL.ByteString
+extFromFilename filename
+  = check $ BSL.reverse $ BSL.takeWhile (/= '.') (BSL.reverse filename)
+  where
+    -- check whether resulting string is not equal to original
+    check string = if string /= filename
+                   then string
+                   else BSL.empty
 
 -- get closest A/B TimeStamp from the supplied list against specific time
 -- A is searched backward, B is searched forward
@@ -338,16 +372,6 @@ bstrPieces ps = BSL.concat $ map transformPiece ps
     transformTimeStamp (TimeStamp side str) =
         BSL.concat [BSL.pack $ show side, ":", str]
 
-substituteInTemplate :: BSL.ByteString -> ScriptData -> BSL.ByteString
-substituteInTemplate template (ScriptData (version, extension, source, pieces))
-  = let subTable :: [(BS.ByteString, BSL.ByteString)]
-        subTable = [ ( "{{VERSION}}",    BSL.concat ["\"", version,   "\""] )
-                   , ( "{{EXTENSION}}",  BSL.concat ["\"", extension, "\""] )
-                   , ( "{{SOURCE}}",     BSL.concat ["\"", source,    "\""] )
-                   , ( "{{PIECES}}\n",   bstrPieces pieces )
-                   ]
-    in foldr (\(what, with) -> BSLS.replace what with) template subTable
-
 -- this read is not safe (head/last may fail), but we support only valid scripts
 readPiece :: BSL.ByteString -> Piece
 readPiece strP = Piece ( readTimeStamp $ head splitted
@@ -364,8 +388,9 @@ readTimeStamp strTS = let splitted = BSL.split ':' strTS
 readScriptData :: BSL.ByteString -> ScriptData
 readScriptData inpFileContents
   = ScriptData ( parseVar "VERSION="
+               , parseVar "IN_FILENAME="
+               , parseVar "IN_NAME="
                , parseVar "OUT_EXT="
-               , parseVar "SOURCE_NAME="
                , parsePieces "for piece in \\\n"
                )
   where
@@ -382,14 +407,26 @@ readScriptData inpFileContents
     afterPart precStr
       = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) inpFileContents
 
+substituteInTemplate :: ScriptData -> BSL.ByteString
+substituteInTemplate (ScriptData (version, filename, name, extension, pieces))
+  = let subTable :: [(BS.ByteString, BSL.ByteString)]
+        subTable = [ ( "{{VERSION}}",     BSL.concat ["\"", version,   "\""] )
+                   , ( "{{IN_FILENAME}}", BSL.concat ["\"", filename,  "\""] )
+                   , ( "{{IN_NAME}}",     BSL.concat ["\"", name,      "\""] )
+                   , ( "{{EXTENSION}}",   BSL.concat ["\"", extension, "\""] )
+                   , ( "{{PIECES}}\n",    bstrPieces pieces )
+                   ]
+    in foldr (\(what, with) -> BSLS.replace what with) scriptTemplate subTable
+
 checkScript :: ScriptData -> BSL.ByteString
-checkScript (ScriptData (version, extension, sourcename, _))
+checkScript (ScriptData (version, filename, name, extension, _))
   | version /= scriptVersion
     = BSL.concat [ "# attempt to use script with parser of version: "
                  , scriptVersion , "\n"
                  ]
-  | extension == BSL.empty = "# couldn't fetch OUT_EXT\n"
-  | sourcename == BSL.empty = "# couldn't fetch SOURCE_NAME\n"
+  | filename  == BSL.empty = "# couldn't read IN_FILENAME\n"
+  | name      == BSL.empty = "# couldn't read IN_NAME\n"
+  | extension == BSL.empty = "# couldn't read OUT_EXT\n"
   | otherwise = BSL.empty
 
 inpTimeStamps :: [Piece] -> [TimeStamp]
@@ -412,32 +449,31 @@ closestAny ts time d = case d of
     tsBackward = reverse $ takeWhile ((  < time ) . getTimeStampDouble) st
 
 -- add TimeStamp (with composing and adding new Pieces)
-add :: BSL.ByteString -> BSL.ByteString -> TimeStamp
-    -> Either BSL.ByteString BSL.ByteString
-add inpFileContents mediaFileName t =
+add :: BSL.ByteString -> TimeStamp -> Either BSL.ByteString BSL.ByteString
+add inpFileContents t =
     let scriptData = readScriptData inpFileContents
-        inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        inpPieces = (\(ScriptData (_, _, _, _, x)) -> x) scriptData
         ts = inpTimeStamps inpPieces
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
        else if t `elem` ts
             then Right "already added"
-            else Left
-              $ substituteInTemplate scriptTemplateFile
-                                     ( ScriptData ( scriptVersion
-                                                  , outFileExtension
-                                                  , nameFromFilename
-                                                    mediaFileName
-                                                  , allPieces $ t : ts
-                                                  )
-                                     )
+            else let newScriptData (ScriptData (_, filename,name,extension, _))
+                       = substituteInTemplate ( ScriptData ( scriptVersion
+                                                           , filename
+                                                           , name
+                                                           , extension
+                                                           , allPieces $ t : ts
+                                                           )
+                                              )
+                 in Left $ newScriptData scriptData
 
 -- navigate in existing script forward or backward from given time
 nav :: BSL.ByteString -> BSL.ByteString -> Direction
     -> Either (Maybe (TimeStamp, Position)) BSL.ByteString
 nav inpFileContents time d
   = let scriptData = readScriptData inpFileContents
-        inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        inpPieces = (\(ScriptData (_, _, _, _, x)) -> x) scriptData
         ts = sort $ inpTimeStamps inpPieces
         timeDouble = unsafeReadDouble time
     -- check if there are parsing errors of existing script (if supplied)
@@ -464,14 +500,14 @@ nav inpFileContents time d
 del :: BSL.ByteString -> BSL.ByteString -> Either BSL.ByteString BSL.ByteString
 del inpFileContents time
   = let scriptData = readScriptData inpFileContents
-        inpPieces = (\(ScriptData (_, _, _, x)) -> x) scriptData
+        inpPieces = (\(ScriptData (_, _, _, _, x)) -> x) scriptData
         ts = inpTimeStamps inpPieces
         t = TimeStamp X time -- here we assume that equality ignores Side
-        newScriptData (ScriptData (version, extension, sourcename, _))
-          = ScriptData (version, extension, sourcename, allPieces $ delete t ts)
+        newScriptData (ScriptData (version, filename, name, extension, _))
+          = ScriptData ( version, filename, name, extension
+                       , allPieces $ delete t ts )
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
        else if t `notElem` ts
             then Right "does not exist"
-            else Left $ substituteInTemplate scriptTemplateFile
-                                             (newScriptData scriptData)
+            else Left $ substituteInTemplate (newScriptData scriptData)
