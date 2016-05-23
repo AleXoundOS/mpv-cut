@@ -33,7 +33,10 @@ int l_cfg(lua_State *L)
     if (!extension)
         luaL_error(L, "cannot parse time string");
 
-    int retCode = h_cfg(fp, (HsPtr *) filename, (HsPtr *) extension);
+    /** getting audioOnly boolean */
+    char audioOnly = luaL_checkint(L, 4);
+
+    int retCode = h_cfg(fp, (HsPtr *) filename, (HsPtr *) extension, audioOnly);
 
     lua_pushnumber(L, retCode);
 

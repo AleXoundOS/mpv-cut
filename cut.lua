@@ -25,12 +25,14 @@ function init(mode)
 
             -- choose extension depending on media type: video or audio only
             local ext = "mkv"
+            local audioOnly = 0
             if mp.get_property("video-format") == nil then
                 ext = ""
+                audioOnly = 1
             end
 
             -- write config (filename, extension) for the current playback file
-            hsCfg(f, mp.get_property("filename"), ext)
+            hsCfg(f, mp.get_property("filename"), ext, audioOnly)
         end
 
         if f == nil then

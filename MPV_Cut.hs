@@ -70,8 +70,10 @@ newtype Piece = Piece (TimeStamp,TimeStamp)
   deriving (Eq, Ord, Show)
 
 newtype ScriptData
---               version         input filename  input name     output extension
-  = ScriptData ( BSL.ByteString, BSL.ByteString, BSL.ByteString, BSL.ByteString
+               --   version
+  = ScriptData ( BSL.ByteString
+               -- input filename   input name   output extension   audioOnly
+               , BSL.ByteString, BSL.ByteString, BSL.ByteString, BSL.ByteString
                , [Piece] )
   deriving (Eq, Ord, Show)
 
@@ -99,11 +101,11 @@ fpToHandle fp = do
     return handle
 
 #ifndef GHCI
-foreign export ccall h_cfg :: Ptr CFile -> CString -> CString -> IO CInt
+foreign export ccall h_cfg :: Ptr CFile -> CString -> CString -> Char -> IO CInt
 #endif
 -- write configuration (version, filename, name, extension)
-h_cfg :: Ptr CFile -> CString -> CString -> IO CInt
-h_cfg fp cMediaFilename cExtension = do
+h_cfg :: Ptr CFile -> CString -> CString -> Char -> IO CInt
+h_cfg fp cMediaFilename cExtension cAudioOnly = do
     h <- fpToHandle fp
 
     mediaFilenameBind <- BS.packCString cMediaFilename
@@ -116,13 +118,19 @@ h_cfg fp cMediaFilename cExtension = do
                            then extension
                            -- extract it from input filename, keep original
                            else extFromFilename mediaFileName
+
+    let audioOnly = if cAudioOnly == '\0'
+                    then "False"
+                    else "True"
+
     -- writing all variables in script but with empty Pieces
-    BSL.hPutStr h $ substituteInTemplate (ScriptData ( scriptVersion
-                                                     , mediaFileName
-                                                     , nameFromFilename
-                                                       mediaFileName
-                                                     , realExtension
-                                                     , [] ))
+    BSL.hPutStr h
+      $ substituteInTemplate (ScriptData ( scriptVersion
+                                         , mediaFileName
+                                         , nameFromFilename mediaFileName
+                                         , realExtension
+                                         , audioOnly
+                                         , [] ))
     hClose h
     return 0
 
@@ -391,6 +399,7 @@ readScriptData inpFileContents
                , parseVar "IN_FILENAME="
                , parseVar "IN_NAME="
                , parseVar "OUT_EXT="
+               , parseVar "AUDIO_ONLY="
                , parsePieces "for piece in \\\n"
                )
   where
@@ -408,18 +417,21 @@ readScriptData inpFileContents
       = snd $ BSLS.breakAfter ('\n' `BS.cons` precStr) inpFileContents
 
 substituteInTemplate :: ScriptData -> BSL.ByteString
-substituteInTemplate (ScriptData (version, filename, name, extension, pieces))
+substituteInTemplate (ScriptData ( version
+                                 , filename, name, extension, audioOnly
+                                 , pieces ))
   = let subTable :: [(BS.ByteString, BSL.ByteString)]
         subTable = [ ( "{{VERSION}}",     BSL.concat ["\"", version,   "\""] )
                    , ( "{{IN_FILENAME}}", BSL.concat ["\"", filename,  "\""] )
                    , ( "{{IN_NAME}}",     BSL.concat ["\"", name,      "\""] )
                    , ( "{{EXTENSION}}",   BSL.concat ["\"", extension, "\""] )
+                   , ( "{{AUDIO_ONLY}}",  BSL.concat ["\"", audioOnly, "\""] )
                    , ( "{{PIECES}}\n",    bstrPieces pieces )
                    ]
     in foldr (\(what, with) -> BSLS.replace what with) scriptTemplate subTable
 
 checkScript :: ScriptData -> BSL.ByteString
-checkScript (ScriptData (version, filename, name, extension, _))
+checkScript (ScriptData (version, filename, name, extension, audioOnly, _))
   | version /= scriptVersion
     = BSL.concat [ "# attempt to use script with parser of version: "
                  , scriptVersion , "\n"
@@ -427,6 +439,7 @@ checkScript (ScriptData (version, filename, name, extension, _))
   | filename  == BSL.empty = "# couldn't read IN_FILENAME\n"
   | name      == BSL.empty = "# couldn't read IN_NAME\n"
   | extension == BSL.empty = "# couldn't read OUT_EXT\n"
+  | audioOnly == BSL.empty = "# couldn't read AUDIO_ONLY\n"
   | otherwise = BSL.empty
 
 inpTimeStamps :: [Piece] -> [TimeStamp]
@@ -452,17 +465,19 @@ closestAny ts time d = case d of
 add :: BSL.ByteString -> TimeStamp -> Either BSL.ByteString BSL.ByteString
 add inpFileContents t =
     let scriptData = readScriptData inpFileContents
-        inpPieces = (\(ScriptData (_, _, _, _, x)) -> x) scriptData
+        inpPieces = (\(ScriptData (_, _, _, _, _, x)) -> x) scriptData
         ts = inpTimeStamps inpPieces
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
        else if t `elem` ts
             then Right "already added"
-            else let newScriptData (ScriptData (_, filename,name,extension, _))
+            else let newScriptData (ScriptData ( _, filename, name, extension
+                                               , audioOnly, _ ))
                        = substituteInTemplate ( ScriptData ( scriptVersion
                                                            , filename
                                                            , name
                                                            , extension
+                                                           , audioOnly
                                                            , allPieces $ t : ts
                                                            )
                                               )
@@ -473,7 +488,7 @@ nav :: BSL.ByteString -> BSL.ByteString -> Direction
     -> Either (Maybe (TimeStamp, Position)) BSL.ByteString
 nav inpFileContents time d
   = let scriptData = readScriptData inpFileContents
-        inpPieces = (\(ScriptData (_, _, _, _, x)) -> x) scriptData
+        inpPieces = (\(ScriptData (_, _, _, _, _, x)) -> x) scriptData
         ts = sort $ inpTimeStamps inpPieces
         timeDouble = unsafeReadDouble time
     -- check if there are parsing errors of existing script (if supplied)
@@ -500,11 +515,11 @@ nav inpFileContents time d
 del :: BSL.ByteString -> BSL.ByteString -> Either BSL.ByteString BSL.ByteString
 del inpFileContents time
   = let scriptData = readScriptData inpFileContents
-        inpPieces = (\(ScriptData (_, _, _, _, x)) -> x) scriptData
+        inpPieces = (\(ScriptData (_, _, _, _, _, x)) -> x) scriptData
         ts = inpTimeStamps inpPieces
         t = TimeStamp X time -- here we assume that equality ignores Side
-        newScriptData (ScriptData (version, filename, name, extension, _))
-          = ScriptData ( version, filename, name, extension
+        newScriptData (ScriptData (_, filename, name, extension, audioOnly, _))
+          = ScriptData ( scriptVersion, filename, name, extension, audioOnly
                        , allPieces $ delete t ts )
     in if inpFileContents /= BSL.empty && checkScript scriptData /= BSL.empty
        then Right $ checkScript scriptData
