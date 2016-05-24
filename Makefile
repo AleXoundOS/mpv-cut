@@ -8,6 +8,7 @@ MPV_Cut_stub.h: MPV_Cut.hs
 	ghc $^ -c -Wall -no-hs-main ${OPTIM} -fPIC -dynamic
 
 deps: libmpv-cut.so
+	mkdir -p ${DEPLIBSPATH}
 	ldd libmpv-cut.so | while read line; do \
 		cp -uv $$(echo $$line | cut -d'>' -f2 | cut -d'(' -f1) ${DEPLIBSPATH}; \
 	done; \
