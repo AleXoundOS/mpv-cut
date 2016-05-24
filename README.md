@@ -19,7 +19,6 @@ creates a **bash script** and accumulates there **pieces** composed of input
 **timestamps**. Running the script produces all accumulated pieces of media
 file using [FFmpeg](https://github.com/FFmpeg/FFmpeg) in **stream copy** mode.
 
-
 ### Installation
 * install software from [System requirements](#system-requirements) section
 * put mpv-cut-deplibs, cut.lua and libmpv-cut.so into ~/.mpv/scripts
@@ -40,12 +39,18 @@ Ctrl+d      | delete existing timestamp
 
 
 ### Technical info
+#### Output containers
+By default output format (extension) for cutted pieces of:
+* video - matroska (mkv)
+* audio - kept same
+
 #### Diagram
 Data pass:
 [MPV] --> [Lua] --> [C] --> [Haskell] --> Bash script --> [FFmpeg]
 
 #### Pieces composition logic
 Rough example:
+
 1. f1 (A:B:ts) = Piece (A, B) : f1 ts
 2. f2 ts = f1 ts ++ f2 (ts \\\\ (f1 ts))
 3. f3 (A1:A2:B:ts) = Piece (A1, B) : Piece (A2, B) : f3 ts
@@ -64,11 +69,11 @@ without -fPIC). Building a static executable works for Haskell library code. For
 example, after adding main function and renaming module to Main in Haskell
 library, this command succeeds:
 
-ghc MPV_Cut.hs -o libmpv-cut.a -Wall -static
+ghc MPV_Cut.hs -o mpv-cut -Wall -static
 
 It produces a ELF executable which has dependencies only on C libraries. Using:
 
-ghc MPV_Cut.hs -o libmpv-cut.a -Wall -static -optl-static
+ghc MPV_Cut.hs -o mpv-cut -Wall -static -optl-static
 
 goes even further and creates a fully statically linked ELF executable without
 any dependencies. However I don't know any means to include the C binding
@@ -84,12 +89,12 @@ imports) with RTS plus C binding into a single shared dynamic library (in terms
 of GHC).
 
 So we're left with linking with "-rpath=mpv-cut-deplibs", and put all needed
-Haskell libraries into hsLibs dir when installing the plugin.
+Haskell libraries into mpv-cut-deplibs dir when installing the plugin.
 
 #### Inaccurate MPV seek with audio and some video formats #2
-MPV cannot seek to exact requested time. This results in inability to navigate
-to previously saved timestamp. In practice this even happened with a few
-timestamps of mp4 file.
+MPV cannot seek to exact requested time with them. This results in inability
+to navigate to previously saved timestamp. In practice this even happened with
+a few timestamps of mp4 file.
 
 #### Possibly inaccurate FFmpeg seek #3
 First of all by it's nature stream copy cannot guarantee frame accurate cut
@@ -159,7 +164,7 @@ Lua version must be compatible with MPV version used.
 ### Tested with
 * MPV 0.17
 * Lua 5.2
-* FFmpeg 3.0
+* FFmpeg 3.0.2
 
 * Bash 4.3.042
 * bc 1.06.95
@@ -174,5 +179,5 @@ Lua version must be compatible with MPV version used.
 GPLv3
 
 ### Feedback
-Any feedback is appreciated! If you have solutions to [Issues] section,
+Any feedback is appreciated! If you have solutions to [Issues](#issues) section,
 please share them. And freely express your critique.
