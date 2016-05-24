@@ -165,10 +165,8 @@ Lua version must be compatible with MPV version used.
 * MPV 0.17
 * Lua 5.2
 * FFmpeg 3.0.2
-
 * Bash 4.3.042
 * bc 1.06.95
-
 * make 4.1
 * GHC 7.10.3
 * Haskell packages:
