@@ -69,11 +69,11 @@ without -fPIC). Building a static executable works for Haskell library code. For
 example, after adding main function and renaming module to Main in Haskell
 library, this command succeeds:
 
-ghc MPV_Cut.hs -o mpv-cut -Wall -static
+$ ghc MPV_Cut.hs -o mpv-cut -Wall -static
 
 It produces a ELF executable which has dependencies only on C libraries. Using:
 
-ghc MPV_Cut.hs -o mpv-cut -Wall -static -optl-static
+$ ghc MPV_Cut.hs -o mpv-cut -Wall -static -optl-static
 
 goes even further and creates a fully statically linked ELF executable without
 any dependencies. However I don't know any means to include the C binding
@@ -153,13 +153,21 @@ For more information about MPV usage refer to it's
 
 Lua version must be compatible with MPV version used.
 
-### Build requirements
+### Build
+#### Requirements
 * Bash
 * make
 * GHC
 * Haskell packages:
     * searchstrings
     * file-embed
+
+#### Instructions
+simply run:
+
+$ make
+
+It will produce a dynamic library libmpv-cut.so and create directory mpv-cut-deplibs with it's dependencies.
 
 ### Tested with
 * MPV 0.17
