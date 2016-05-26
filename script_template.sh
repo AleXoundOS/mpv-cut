@@ -10,7 +10,7 @@ function out_file {
     echo "$IN_NAME.$1.$OUT_EXT"
 }
 
-FFMPEG_CMD="ffmpeg "
+FFMPEG_CMD="ffmpeg $@"
 
 i=0
 for piece in \

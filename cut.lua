@@ -111,6 +111,22 @@ function del()
     end
 end
 
+function cut(mode)
+    print(mp.get_property("path") .. ".sh")
+    x, y, retCode = os.execute( "bash \"" .. mp.get_property("path") .. ".sh\" "
+                              .. mode )
+    if retCode == 0 then
+        mp.osd_message("successfully cut")
+    elseif retCode == 127 then
+        mp.osd_message("script for cutting does not exist")
+    elseif retCode == 1 and mode ~= "overwrite" then
+        mp.osd_message("one or more cutted files already exist")
+    else
+        mp.osd_message( "unknown FFmpeg error return code ("
+                      .. tostring(retCode) .. ")")
+    end
+end
+
 -- add A--> timestamp
 mp.add_forced_key_binding("a", function() add("A") end)
 
@@ -130,3 +146,9 @@ mp.add_forced_key_binding(";", function() nav("backward") end)
 -- delete existing timestamp
 mp.add_forced_key_binding("Ctrl+d", function() del() end)
 mp.add_forced_key_binding('0x4', function() del() end) -- Ctrl+d for console
+
+-- cut pieces
+mp.add_forced_key_binding("C", function() cut("-n") end)
+
+-- cut pieces overwriting existing in filesystem
+mp.add_forced_key_binding("Ctrl+C", function() cut("-y") end)
