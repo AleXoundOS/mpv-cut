@@ -112,7 +112,11 @@ function del()
 end
 
 function cut(mode)
-    print(mp.get_property("path") .. ".sh")
+    init("ro")
+    if f == nil then
+        mp.osd_message("no script file exists")
+        return
+    end
     x, y, retCode = os.execute( "bash \"" .. mp.get_property("path") .. ".sh\" "
                               .. mode )
     if retCode == 0 then
@@ -124,6 +128,44 @@ function cut(mode)
     else
         mp.osd_message( "unknown FFmpeg error return code ("
                       .. tostring(retCode) .. ")")
+    end
+end
+
+function res(direction)
+    init("ro")
+    if f == nil then
+        mp.osd_message("no script file exists")
+        return
+    end
+    p, filename = hsRes( f, mp.get_property("working-directory")
+                          , mp.get_property("filename")
+                       , string.byte(direction, 1) )
+
+    function desideSwitch()
+        if (filename ~= mp.get_property("path")) then
+            mp.commandv("loadfile", filename)
+        end
+    end
+
+    if p == string.byte('m') then
+        mp.osd_message("no cutted pieces files exist")
+    elseif p == string.byte('n') then
+        desideSwitch()
+        mp.osd_message("")
+    elseif p == string.byte('f') then
+        desideSwitch()
+        mp.osd_message("first piece")
+    elseif p == string.byte('o') then
+        desideSwitch()
+        mp.osd_message("the only piece")
+    elseif p == string.byte('l') then
+        desideSwitch()
+        mp.osd_message("last piece")
+    elseif p == string.byte('s') then
+        desideSwitch()
+        mp.osd_message("source file")
+    else
+        mp.osd_message("unknown position: " .. p)
     end
 end
 
@@ -148,7 +190,19 @@ mp.add_forced_key_binding("Ctrl+d", function() del() end)
 mp.add_forced_key_binding('0x4', function() del() end) -- Ctrl+d for console
 
 -- cut pieces
-mp.add_forced_key_binding("C", function() cut("-n") end)
+mp.add_forced_key_binding("c", function() cut("-n") end)
 
 -- cut pieces overwriting existing in filesystem
-mp.add_forced_key_binding("Ctrl+C", function() cut("-y") end)
+mp.add_forced_key_binding("C", function() cut("-y") end)
+
+-- cut pieces with only a+v streams
+mp.add_forced_key_binding("Alt+c", function() cut("-n ^av") end)
+
+-- cut pieces with only a+v streams overwriting existing in filesystem
+mp.add_forced_key_binding("Alt+C", function() cut("-y ^av") end)
+
+-- switch to previous cutted piece
+mp.add_forced_key_binding("Ctrl+Shift+LEFT", function() res("p") end)
+
+-- switch to next cutted piece
+mp.add_forced_key_binding("Ctrl+Shift+RIGHT", function() res("n") end)

@@ -5,12 +5,13 @@ IN_FILENAME={{IN_FILENAME}}
 IN_NAME={{IN_NAME}}
 OUT_EXT={{EXTENSION}}
 AUDIO_ONLY={{AUDIO_ONLY}}
+AV="$(echo " $@" | cut -d\^ -f2)"
 
 function out_file {
     echo "$IN_NAME.$1.$OUT_EXT"
 }
 
-FFMPEG_CMD="ffmpeg $@"
+FFMPEG_CMD="ffmpeg $(echo " $@" | cut -d^ -f1)"
 
 i=0
 for piece in \
@@ -41,7 +42,12 @@ do IFS=","; set -- $piece
         FFMPEG_CMD="$FFMPEG_CMD -i \"$IN_FILENAME\" $strA $strB -c copy"
     fi
     printf -v NUMBER_STR '%02d' "$i"
-    FFMPEG_CMD="$FFMPEG_CMD -map $NUMBER_STR \"$(out_file $NUMBER_STR)\""
+    if [ $AV == "av" ]; then
+        FFMPEG_CMD="$FFMPEG_CMD -map $NUMBER_STR:a -map $NUMBER_STR:v"
+    else
+        FFMPEG_CMD="$FFMPEG_CMD -map $NUMBER_STR"
+    fi
+    FFMPEG_CMD="$FFMPEG_CMD \"$(out_file $NUMBER_STR)\""
     ((i++))
 done
 

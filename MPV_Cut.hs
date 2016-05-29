@@ -21,10 +21,11 @@ import System.Posix.IO (fdToHandle, dup)
 import qualified Data.ByteString.Lazy.Char8 as BSL
 import qualified Data.ByteString.Char8 as BS
   (ByteString, useAsCString, packCString, cons, hGetContents)
-import Data.List ((\\), find, sort, nub, delete)
+import Data.List ((\\), find, sort, nub, delete, isInfixOf)
 import Text.Read (readMaybe)
 import Data.FileEmbed (embedFile)
 import Data.ByteString.Lazy.Search as BSLS (replace, breakAfter)
+import System.Directory (doesFileExist, getDirectoryContents)
 
 import Debug.Trace
 myTrace :: Show b => b -> b
@@ -83,6 +84,9 @@ data Direction = Forward | Backward
 data Position = First | Only | Last | Normal
   deriving (Show)
 
+data RPosition = RSource | RFirst | ROnly | RLast | RNormal | RMissing
+  deriving (Eq, Show)
+
 foreign import ccall unsafe "stdlib.h atof" c_atof :: CString -> IO CDouble
 
 unsafeReadDouble :: BSL.ByteString -> CDouble
@@ -109,7 +113,7 @@ h_cfg fp cMediaFilename cExtension cAudioOnly = do
     h <- fpToHandle fp
 
     mediaFilenameBind <- BS.packCString cMediaFilename
-    let mediaFileName = BSL.fromStrict mediaFilenameBind
+    let mediaFilename = BSL.fromStrict mediaFilenameBind
 
     extensionBind <- BS.packCString cExtension
     let realExtension = let extension = BSL.fromStrict extensionBind
@@ -117,7 +121,7 @@ h_cfg fp cMediaFilename cExtension cAudioOnly = do
                            -- use given extension
                            then extension
                            -- extract it from input filename, keep original
-                           else extFromFilename mediaFileName
+                           else extFromFilename mediaFilename
 
     let audioOnly = if cAudioOnly == '\0'
                     then "False"
@@ -126,8 +130,8 @@ h_cfg fp cMediaFilename cExtension cAudioOnly = do
     -- writing all variables in script but with empty Pieces
     BSL.hPutStr h
       $ substituteInTemplate (ScriptData ( scriptVersion
-                                         , mediaFileName
-                                         , nameFromFilename mediaFileName
+                                         , mediaFilename
+                                         , nameFromFilename mediaFilename
                                          , realExtension
                                          , audioOnly
                                          , [] ))
@@ -268,6 +272,41 @@ h_del fp c_time = do
                            else do BSL.hPutStr h
                                      $ BSL.append bstrError inpFileContents
                                    returnWithClose 1
+
+#ifndef GHCI
+foreign export ccall h_res :: Ptr CFile -> CString -> CString -> Char
+                           -> Ptr CString
+                           -> IO CInt
+#endif
+h_res :: Ptr CFile -> CString -> CString -> Char -> Ptr CString -> IO CInt
+h_res fp cWDir cSrcFilename c_d pResFilename = do
+    h <- fpToHandle fp
+
+    -- file read
+    h2 <- hDuplicate h
+    hSeek h2 AbsoluteSeek 0
+    inpFileContentsStrict <- BS.hGetContents h2
+    let inpFileContents = BSL.fromStrict inpFileContentsStrict
+    wDir <- BS.packCString cWDir
+    srcFilename <- BS.packCString cSrcFilename
+    let direction = case c_d of
+                        'p' -> Backward
+                        'n' -> Forward
+                        _   -> error "unexpected direction in h_res"
+
+    result <- res inpFileContents (BSL.fromStrict wDir)
+                                  (BSL.fromStrict srcFilename)
+                                  direction
+    let position (p, _) = p
+
+    resFilenameCStr <- BS.useAsCString (BSL.toStrict $ (\(_, f) -> f) result)
+                                       return
+    poke pResFilename resFilenameCStr
+
+    hClose h2
+    hClose h
+
+    return $ fromIntegral $ fromEnum $ myToLower $ (show $ position result) !! 1
 
 myToLower :: Char -> Char
 myToLower c = toEnum (fromEnum c + 32)
@@ -526,3 +565,95 @@ del inpFileContents time
        else if t `notElem` ts
             then Right "does not exist"
             else Left $ substituteInTemplate (newScriptData scriptData)
+
+show2d :: Int -> BSL.ByteString
+show2d n | length (show n) == 1 = '0' `BSL.cons` (BSL.pack (show n))
+         | otherwise = BSL.pack $ show n
+
+findFileByPatternInDir :: BSL.ByteString -> BSL.ByteString -> IO BSL.ByteString
+findFileByPatternInDir pattern dir = do
+    dirList <- getDirectoryContents (BSL.unpack dir)
+    let nonNumberCondition :: String -> Bool
+        nonNumberCondition with
+          = notElem (BSL.unpack
+                      $ (extFromFilename . nameFromFilename) (BSL.pack with))
+                    [BSL.unpack $ show2d x | x <- [00..99]]
+        predicate :: String -> Bool
+        predicate with = isInfixOf (BSL.unpack pattern) with
+                      && nonNumberCondition with
+                      && extFromFilename (BSL.pack with) /= "sh"
+        satisfied :: [FilePath]
+        satisfied = filter predicate dirList
+    if (not . null) satisfied
+    then return $ BSL.pack $ head satisfied
+    else return BSL.empty
+
+res :: BSL.ByteString -> BSL.ByteString -> BSL.ByteString -> Direction
+    -> IO (RPosition, BSL.ByteString)
+res inpFileContents wDir srcFilename direction
+  = let ext = (\(ScriptData (_, _, _, e, _, _)) -> e)
+                $ readScriptData inpFileContents
+        srcName = nameFromFilename srcFilename
+        srcMaybeNum = case (BSL.readInt . extFromFilename) srcName of
+                        Just (n, _) -> Just n
+                        Nothing -> Nothing
+        rNum :: Maybe Int -> Direction -> Int
+        rNum (Just number) Forward  = number + 1
+        rNum Nothing       Forward  = 0
+        rNum (Just number) Backward = number - 1
+        rNum Nothing       Backward = -1 -- source file
+        reqFilename :: Int -> IO BSL.ByteString
+        reqFilename reqNum
+          = if reqNum == -1
+            then if srcMaybeNum == Nothing
+                 then return srcFilename
+                 else do
+                     maybeFound <- findFileByPatternInDir
+                                   (nameFromFilename srcName) wDir
+                     return maybeFound
+            else return $ BSL.concat [ if srcMaybeNum == Nothing
+                                       then srcName
+                                       else nameFromFilename srcName
+                                     , BSL.cons '.' (show2d reqNum)
+                                     , BSL.cons '.' ext ]
+        position :: Int -> IO RPosition
+        position (-1) = return RSource
+        position 00 = do
+            -- check if more then single 00 exists
+            filename <- reqFilename 00
+            fileExists <- doesFileExist $ BSL.unpack filename
+            if fileExists
+            then do
+                -- check if more then single 00 exists
+                filename01 <- reqFilename 01
+                fileExists01 <- doesFileExist $ BSL.unpack filename01
+                if fileExists01
+                then return RFirst -- 01 also exists
+                else return ROnly -- 00 only
+            else return RMissing -- no cutted video pieces exist
+        position number = do
+            -- check if it exists
+            filename <- reqFilename number
+            fileExists <- doesFileExist $ BSL.unpack filename
+            if fileExists
+            then do
+                -- check if it's last
+                filename_last <- reqFilename (number + 1)
+                fileExists_last <- doesFileExist $ BSL.unpack filename_last
+                if fileExists_last
+                then return RNormal
+                else return RLast
+            else if number == 01
+                 then return ROnly
+                 else return RNormal
+    in do
+        if ext == BSL.empty
+        then error "couldn't parse extension from script"
+        else do filename <- reqFilename $ rNum srcMaybeNum direction
+                fileExists <- doesFileExist $ BSL.unpack filename
+                p <- position $ myTrace $ rNum srcMaybeNum direction
+                return (myTrace p, if fileExists
+                           then filename
+                           else if p /= RMissing
+                                then srcFilename
+                                else BSL.empty)

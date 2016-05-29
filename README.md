@@ -9,7 +9,7 @@ keybindings.
 
 1. start media _file.ext_ playback in MPV
 2. set start/end timestamps by pressing 'A'/'B' keys
-3. run _file.ext_.sh
+3. press 'c' key
 4. check _file_.00\._ext_, _file_.01\._ext_ ... for the cutted parts
 
 ### Brief explanation of how it works
@@ -24,19 +24,25 @@ file using [FFmpeg](https://github.com/FFmpeg/FFmpeg) in **stream copy** mode.
 * put mpv-cut-deplibs, cut.lua and libmpv-cut.so into ~/.mpv/scripts
 
 
-### Default MPV key bindings
+### Key bindings
 All commands relate to the current playback time position, which forms a
 timestamp passed to them.
 
-key binding | action
------------ | ------
-a           | add timestamp as piece start
-b           | add timestamp as piece end
-Ctrl+x      | add timestamp which will act as both (start or end)
-Ctrl+d      | delete existing timestamp
-'           | navigate forward within existing timestamps
-;           | navigate backward within existing timestamps
-
+key binding      | action
+---------------- | ------
+a                | add timestamp as piece start
+b                | add timestamp as piece end
+Ctrl+x           | add timestamp which will act as both (start or end)
+Ctrl+d           | delete existing timestamp
+'                | navigate forward within existing timestamps
+;                | navigate backward within existing timestamps
+;                | navigate backward within existing timestamps
+c                | cut pieces
+C                | cut pieces overwriting existing ones
+Alt+c            | cut pieces only a+v streams
+Alt+C            | cut pieces only a+v streams with overwriting
+Ctrl+Shift+LEFT  | switch to previous existing cutted piece
+Ctrl+Shift+RIGHT | switch to next existing cutted piece
 
 ### Technical info
 #### Output containers
