@@ -36,7 +36,6 @@ Ctrl+x           | add timestamp which will act as both (start or end)
 Ctrl+d           | delete existing timestamp
 '                | navigate forward within existing timestamps
 ;                | navigate backward within existing timestamps
-;                | navigate backward within existing timestamps
 c                | cut pieces
 C                | cut pieces overwriting existing ones
 Alt+c            | cut pieces only a+v streams
