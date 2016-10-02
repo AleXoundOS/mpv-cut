@@ -9,7 +9,7 @@ keybindings.
 
 1. start media _file.ext_ playback in MPV
 2. set start/end timestamps by pressing 'A'/'B' keys
-3. press 'c' key
+3. press 'C' key
 4. check _file_.00\._ext_, _file_.01\._ext_ ... for the cutted parts
 
 ### Brief explanation of how it works
@@ -150,9 +150,9 @@ For more information about MPV usage refer to it's
 [documentation](https://mpv.io/manual/stable/).
 
 ### System requirements
-* MPV
-* Lua
-* FFmpeg
+* [MPV](https://mpv.io/installation/)
+* [Lua](http://www.lua.org/download.html)
+* [FFmpeg](https://ffmpeg.org/download.html)
 * Bash
 * [bc](http://www.gnu.org/software/bc)
 
