@@ -1,0 +1,39 @@
+name:                mpv-cut
+version:             0.1.0.1
+synopsis:            MPV plugin for cutting pieces of media file
+                     specified with start/end timestamps via keybindings
+description:         Please see README.md
+homepage:            https://github.com/AleXoundOS/mpv-cut
+license:             GPL-3
+license-file:        LICENSE
+author:              Alexander Tomokhov
+maintainer:          alexoundos@ya.ru
+copyright:           2016 Alexander Tomokhov
+category:            Media
+-- HSrts linkage is set in ./configure script
+build-type:          Configure
+extra-source-files:  configure
+                     mpv-cut.buildinfo.in
+                     script_template.sh
+data-files:          cut.lua
+cabal-version:       >=1.10
+tested-with:         GHC==8.0.1
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     MPV_Cut
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5,
+                       bytestring,
+                       stringsearch,
+                       file-embed,
+                       unix,
+                       directory
+  include-dirs:        /usr/include/lua5.2
+  c-sources:           lualibhelper.c
+  ghc-options:         -shared -dynamic -fPIC
+
+
+source-repository head
+  type:     git
+  location: https://github.com/AleXoundOS/mpv-cut

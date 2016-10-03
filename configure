@@ -1,0 +1,8 @@
+#!/bin/sh
+
+GHC_VERSION=$(stack exec -- ghc-pkg field ghc version --simple-output)
+if test -z $GHC_VERSION; then
+    echo "couldn't get GHC version on this system"
+    exit -1
+fi
+sed 's,@GHC_VERSION@,'"$GHC_VERSION"',' mpv-cut.buildinfo.in > mpv-cut.buildinfo

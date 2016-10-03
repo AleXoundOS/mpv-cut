@@ -17,11 +17,27 @@ MPV captures **keystrokes**, calls corresponding functions from Lua script.
 They in turn call Haskell functions through a C binding library. Haskell code
 creates a **bash script** and accumulates there **pieces** composed of input
 **timestamps**. Running the script produces all accumulated pieces of media
-file using [FFmpeg](https://github.com/FFmpeg/FFmpeg) in **stream copy** mode.
+file using FFmpeg in **stream copy** mode.
 
 ### Installation
-* install software from [System requirements](#system-requirements) section
-* put mpv-cut-deplibs, cut.lua and libmpv-cut.so into ~/.mpv/scripts
+#### Software you need to have installed in order to use this plugin
+* [MPV](https://mpv.io/installation/)
+* [Lua](http://www.lua.org/download.html)
+* [FFmpeg](https://ffmpeg.org/download.html)
+* Bash
+* [bc](http://www.gnu.org/software/bc)
+
+Lua version must be compatible with MPV version used.
+
+#### Build
+$ git clone https://github.com/AleXoundOS/mpv-cut.git
+
+$ cd mpv-cut
+
+$ [stack](https://haskellstack.org) build
+
+#### Install MPV plugin
+copy cut.lua and libmpv-cut.so into ~/.mpv/scripts
 
 
 ### Key bindings
@@ -149,42 +165,14 @@ Backspace          | reset playback speed to normal
 For more information about MPV usage refer to it's
 [documentation](https://mpv.io/manual/stable/).
 
-### System requirements
-* [MPV](https://mpv.io/installation/)
-* [Lua](http://www.lua.org/download.html)
-* [FFmpeg](https://ffmpeg.org/download.html)
-* Bash
-* [bc](http://www.gnu.org/software/bc)
-
-Lua version must be compatible with MPV version used.
-
-### Build
-#### Requirements
-* Bash
-* make
-* GHC
-* Haskell packages:
-    * searchstrings
-    * file-embed
-
-#### Instructions
-simply run:
-
-$ make
-
-It will produce a dynamic library libmpv-cut.so and create directory mpv-cut-deplibs with it's dependencies.
-
 ### Tested with
 * MPV 0.17
 * Lua 5.2
 * FFmpeg 3.0.2
-* Bash 4.3.042
+* Bash 4.3.046
 * bc 1.06.95
-* make 4.1
-* GHC 7.10.3
-* Haskell packages:
-    * stringsearch 0.3.3.6
-    * file-embed 0.0.10
+* make 4.2.1
+* stackage LTS Haskell 7.2
 
 ### License
 GPLv3

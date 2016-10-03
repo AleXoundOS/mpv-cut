@@ -1,7 +1,2 @@
-*.hi
-*.o
-*.so
-*_stub.h
-hslua
-test_file
-*.dyn_*
+.stack-work
+mpv-cut.buildinfo

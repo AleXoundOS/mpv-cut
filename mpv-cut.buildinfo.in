@@ -1,0 +1,5 @@
+-- extra-lib-dirs: /usr/lib/ghc-@GHC_VERSION@/rts
+-- extra-libraries: HSrts-ghc@GHC_VERSION@
+-- extra-libraries: HSrts
+-- extra-lib-dirs: rts
+ghc-options: -lHSrts-ghc@GHC_VERSION@
