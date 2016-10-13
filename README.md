@@ -87,7 +87,8 @@ So we have to either:
 * bundle shared library with it's haskell dependencies statically
 * link haskell dependencies dynamically and install all of them
 
-Currently both fail most likely because of commercialhaskell/stack#2158.
+Currently both fail most likely because of [commercialhaskell/stack#2158](https://github.com/commercialhaskell/stack/issues/2158) and
+[commercialhaskell/stack#2167](https://github.com/commercialhaskell/stack/issues/2167).
 
 ##### static approach
 Static build attempts fail at linking.
