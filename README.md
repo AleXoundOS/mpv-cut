@@ -3,6 +3,8 @@
 Allows to cut pieces of media file specified with start/end timestamps via
 keybindings.
 
+CURRENTLY BROKEN BUILD (see [Issues](#issues)).
+
 --------------------------------------------------------------------------------
 
 ### Usage example
@@ -78,16 +80,30 @@ Rough example:
 4. f4 (B:A) = [Piece (Start, B), Piece (A, End)]
 
 ### Issues
-#### Major installation problem #1
-The resulting dynamic library depends on many other Haskell libraries. So using
-this plugin requires all of them installed in your system (or copied to
-~/.config/scripts/mpv-cut-delibs).
+#### Major build & installation problem #1
+The resulting dynamic library depends on many other Haskell libraries.
+So we have to either:
 
+* bundle shared library with it's haskell dependencies statically
+* link haskell dependencies dynamically and install all of them
+
+Currently both fail most likely because of commercialhaskell/stack#2158.
+
+##### static approach
 Static build attempts fail at linking.
 Supposedly the static .a libraries shipped with Haskell packages do not allow
 further embedding into a shared dynamic library which is the case (built
-without -fPIC). Building a static executable works for Haskell library code. For
-example, after adding main function and renaming module to Main in Haskell
+without -fPIC).
+Using "-shared" to build a library (as opposed to executable) immediately
+throws errors like "relocation R_X86_64_32S against" ... "recompile with
+-fPIC".
+
+The goal is to collect statically all Haskell dependencies with RTS runtime
+plus C binding into a single shared dynamic library
+(in terms of GHC).
+
+<details><summary>Building a static executable works.</summary>
+For example, after adding main function and renaming module to Main in Haskell
 library, this command succeeds:
 
 $ ghc MPV_Cut.hs -o mpv-cut -Wall -static
@@ -100,17 +116,19 @@ goes even further and creates a fully statically linked ELF executable without
 any dependencies. However I don't know any means to include the C binding
 object code into such file. And both variants don't export the needed functions
 in the resulting binary.
+</details>
 
-Using "-shared" to build a library (as opposed to executable) immediately
-throws errors like "relocation R_X86_64_32S against" ... "recompile with
--fPIC".
+##### dynamic approach
+I.e. use of this plugin requires all dependencies installed somehow in your system
+(or copied to a build time configured path like ~/.config/scripts/mpv-cut-delibs).
+So we're left with something like linking with "-rpath=mpv-cut-deplibs".
+And put all needed Haskell libraries into mpv-cut-deplibs dir
+when installing the plugin.
 
-The goal is to collect statically all Haskell dependencies (including used
-imports) with RTS plus C binding into a single shared dynamic library (in terms
-of GHC).
-
-So we're left with linking with "-rpath=mpv-cut-deplibs", and put all needed
-Haskell libraries into mpv-cut-deplibs dir when installing the plugin.
+Even this approach does not work. If using Stack, it simply does not
+link shared library with RTS runtime.
+Regardless of `ghc-options: -lHSrts-ghc8.0.1`.
+It seems like ghc-options are respected well only for executables.
 
 #### Inaccurate MPV seek with audio and some video formats #2
 MPV cannot seek to exact requested time with them. This results in inability
@@ -129,7 +147,7 @@ preceding keyframe before the piece, making beginning of piece corrupted
 audio-only media accurate output seeking is used.
 
 #### Minor GHCi development inconvinience #4
-Current GHCi (7.10.3) is unable to handle FFI exports nor ignore them. So
+GHCi 7.10.3 is unable to handle FFI exports nor ignore them. So
 MPV_Cut.hs contains #ifdefs to ignore them when GHCi loads .ghci config with
 corresponding definition.
 
@@ -172,7 +190,7 @@ For more information about MPV usage refer to it's
 * Bash 4.3.046
 * bc 1.06.95
 * make 4.2.1
-* stackage LTS Haskell 7.2
+* stackage LTS Haskell 7.3
 
 ### License
 GPLv3
