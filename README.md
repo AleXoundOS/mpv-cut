@@ -72,12 +72,13 @@ Data pass:
 [MPV] --> [Lua] --> [C] --> [Haskell] --> Bash script --> [FFmpeg]
 
 #### Pieces composition logic
-Rough example:
+<details><summary>Rough example:</summary>
 
 1. f1 (A:B:ts) = Piece (A, B) : f1 ts
 2. f2 ts = f1 ts ++ f2 (ts \\\\ (f1 ts))
 3. f3 (A1:A2:B:ts) = Piece (A1, B) : Piece (A2, B) : f3 ts
 4. f4 (B:A) = [Piece (Start, B), Piece (A, End)]
+</details>
 
 ### Issues
 #### Major build & installation problem #1
